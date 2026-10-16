@@ -55,9 +55,9 @@ For backfilling tests across whole modules, also use skill `tf-coverage-matrix`.
 
 ## Output: the structured report
 
-Write a JSON report to the path in env var `AGENT_REPORT_PATH` (default
-`.github/tf-test-agent-report.json`). This file is git-ignored — it is **not** a test file,
-so writing it does not violate the scope guard. Shape:
+Write a JSON report to the fixed path **`.github/tf-test-agent-report.json`** (always this
+exact path — the workflow reads it from there). This file is git-ignored — it is **not** a
+test file, so writing it does not violate the scope guard. Shape:
 
 ```json
 {
