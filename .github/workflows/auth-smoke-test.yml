@@ -1,0 +1,28 @@
+# Temporary workflow to de-risk Claude authentication early (Phase 2).
+# Isolates ONE thing: can the action authenticate with ANTHROPIC_API_KEY and make a model call?
+# Manually triggered so it does not spam PRs. Replaced by the real PR workflow in Phase 5.
+name: Auth smoke test
+
+on:
+  workflow_dispatch:
+
+# Least privilege: this job only needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  auth-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Claude authentication check
+        uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Authentication smoke test. Reply with exactly: AUTH_OK"
+          # `sonnet` alias isolates auth from the exact model-id pin (done in Phase 5).
+          claude_args: >-
+            --model sonnet
+            --max-turns 1
