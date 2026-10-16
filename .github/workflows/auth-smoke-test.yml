@@ -21,6 +21,9 @@ jobs:
         uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Provide our own GitHub token so the action does NOT fetch an OIDC token
+          # to mint a Claude GitHub App token (app not installed; we use GITHUB_TOKEN by design).
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "Authentication smoke test. Reply with exactly: AUTH_OK"
           # `sonnet` alias isolates auth from the exact model-id pin (done in Phase 5).
           claude_args: >-
