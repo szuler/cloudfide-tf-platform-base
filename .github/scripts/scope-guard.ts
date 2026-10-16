@@ -1,21 +1,24 @@
-// CLI: fail if any changed file is outside the agent's allowed scope (test files only).
-// With file args: checks those paths. Without: diffs the working tree against BASE_REF.
-// Usage: node scripts/scope-guard.ts [file ...]   |   BASE_REF=<ref> node scripts/scope-guard.ts
+// CLI: fail if the agent changed anything outside its allowed scope (test files only).
+// With file args: checks those paths. Without: inspects ALL uncommitted changes via
+// `git status --porcelain`, which includes untracked files and excludes .gitignore'd paths
+// (so the git-ignored agent report and .terraform/ never count). The provider lock file is
+// treated as an expected init artifact, not a violation.
+// Usage: node scripts/scope-guard.ts [file ...]   |   node scripts/scope-guard.ts
 import { run } from "./lib/exec.ts";
-import { scopeViolations } from "./lib/scope.ts";
+import { parsePorcelain, scopeViolations } from "./lib/scope.ts";
 
-function getChangedFiles(baseRef: string): string[] {
-  const res = run("git", ["diff", "--name-only", baseRef], process.cwd());
+function changedFiles(): string[] {
+  const res = run("git", ["status", "--porcelain"], process.cwd());
   if (res.code !== 0) {
-    process.stderr.write(res.stderr || "git diff failed\n");
+    process.stderr.write(res.stderr || "git status failed\n");
     process.exit(2);
   }
-  return res.stdout.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  return parsePorcelain(res.stdout);
 }
 
 function main(): void {
   const argFiles = process.argv.slice(2);
-  const files = argFiles.length > 0 ? argFiles : getChangedFiles(process.env.BASE_REF ?? "HEAD");
+  const files = argFiles.length > 0 ? argFiles : changedFiles();
 
   const violations = scopeViolations(files);
   if (violations.length > 0) {

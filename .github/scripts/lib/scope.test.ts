@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isAllowedTestPath, scopeViolations } from "./scope.ts";
+import { isAllowedTestPath, parsePorcelain, scopeViolations } from "./scope.ts";
 
 test("allows tftest files and tests-dir helpers", () => {
   assert.equal(isAllowedTestPath("modules/network/tests/main.tftest.hcl"), true);
@@ -32,4 +32,26 @@ test("backslash infra path is still a violation (negative)", () => {
   assert.deepEqual(scopeViolations(["modules\\function-app\\main.tf"]), [
     "modules/function-app/main.tf",
   ]);
+});
+
+test("provider lock file is an ignorable artifact, not a violation", () => {
+  assert.deepEqual(scopeViolations(["modules/log-analytics-workspace/.terraform.lock.hcl"]), []);
+});
+
+test("parsePorcelain handles untracked, modified and renamed entries", () => {
+  const out = [
+    "?? modules/x/tests/main.tftest.hcl", // untracked (new test file)
+    " M modules/x/main.tf", // modified tracked infra
+    "?? modules/x/.terraform.lock.hcl", // untracked artifact
+    "R  a/old.ts -> a/new.ts", // rename
+  ].join("\n");
+  const files = parsePorcelain(out);
+  assert.deepEqual(files, [
+    "modules/x/tests/main.tftest.hcl",
+    "modules/x/main.tf",
+    "modules/x/.terraform.lock.hcl",
+    "a/new.ts",
+  ]);
+  // the only real violation here is the modified infra file
+  assert.deepEqual(scopeViolations(files), ["a/new.ts", "modules/x/main.tf"]);
 });
