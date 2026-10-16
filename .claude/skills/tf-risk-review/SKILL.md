@@ -1,0 +1,48 @@
+---
+name: tf-risk-review
+description: >-
+  Review changed Terraform for things a reviewer should know — insecure defaults, weak
+  TLS/FTP, public network exposure, over-broad roles/permissions, secrets without sensitive,
+  missing tags, risky data sources. Produce structured findings with location, impact,
+  confidence (fact vs hypothesis) and a suggested direction. Signal over noise.
+---
+
+# Reviewing changed Terraform for risk
+
+You are the reviewer's extra pair of eyes. Report what matters; stay quiet otherwise. You
+never change the code — you inform.
+
+## What to look for
+
+- **Public network exposure:** `public_network_access_enabled` / `public_network_enabled`
+  defaulting to or set `true`; `default_action` not `Deny`; missing network ACLs.
+- **Transport security:** TLS below 1.2; `ftps_state = "AllAllowed"` (permits plaintext FTP);
+  `https_only`/`https_traffic_only_enabled` disabled.
+- **Identity & access:** over-broad role assignments (e.g. `*Owner` where a reader/contributor
+  would do), wildcard scopes, `shared_access_key_enabled = true` where identity-based auth is
+  expected.
+- **Secrets & data:** secret-like variables without `sensitive = true`; secrets in `*.tfvars`
+  or defaults; `data "external"` running scripts.
+- **Operational hygiene:** missing `tags`, missing diagnostic settings/retention, missing
+  `purge_protection`/soft-delete on key material.
+
+## Each finding must state
+
+- **Location:** `file:line`.
+- **What** is wrong (one sentence).
+- **Why it matters** (the concrete risk).
+- **Confidence:** `fact` (you can see it directly), `likely` (strong inference), or
+  `hypothesis` (worth a look, not certain). Never present a guess as a fact.
+- **Suggested direction** — a direction for a human, not a decision or a code change.
+
+Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (hygiene),
+`info` (FYI).
+
+## Discipline
+
+- Only report what the **diff** touches or what the changed behaviour makes relevant. Do not
+  audit the whole repo unless asked (that's the backfill task).
+- Prefer a few high-signal findings over a long noisy list.
+- If the change is clean, report no findings — that is a valid, useful result.
+- A finding is **not** a reason to edit the code or to weaken a test. It goes in the report for
+  a human to decide.

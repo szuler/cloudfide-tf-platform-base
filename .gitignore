@@ -7,3 +7,7 @@ crash.log
 
 # Node tooling (helper scripts)
 node_modules/
+
+# Agent report (rendered into the PR comment; never committed)
+tf-test-agent-report.json
+.github/tf-test-agent-report.json
