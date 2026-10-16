@@ -1,0 +1,18 @@
+{
+  "name": "tf-test-agent-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic helper scripts for the Terraform test agent PR workflow. Zero runtime dependencies; run with Node 24+ native TypeScript.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test \"scripts/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}

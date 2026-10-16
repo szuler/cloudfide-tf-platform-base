@@ -4,3 +4,6 @@
 *.tfplan
 crash.log
 .env
+
+# Node tooling (helper scripts)
+node_modules/
