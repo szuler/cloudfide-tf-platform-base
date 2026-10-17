@@ -75,5 +75,11 @@ comment and a job summary.
 
 The custom agent is defined in `.claude/agents/terraform-test-engineer.md` and its reusable
 skills in `.claude/skills/` (`tf-write-tests`, `tf-diagnose-test-failures`, `tf-risk-review`,
-`tf-coverage-matrix`). Deterministic helpers (invoked by the workflow, not by the LLM) live
-in `.github/scripts/`.
+`tf-coverage-matrix`, `tf-review-tests`). Deterministic helpers (invoked by the workflow, not by
+the LLM) live in `.github/scripts/`.
+
+Test quality is checked by an **independent critic pass**: a separate, fresh-context run of the
+agent (`tf-review-tests`) reviews the tests it did not write and tries to reject weak or
+tautological ones. This is a judgement layer that raises the quality of what reaches the human —
+it does **not** replace the deterministic gates (the workflow re-runs the tests itself and a scope
+guard enforces the boundaries); trust still comes from those.

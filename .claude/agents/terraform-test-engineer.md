@@ -53,6 +53,13 @@ Use the reusable skills; each has detailed guidance:
 
 For backfilling tests across whole modules, also use skill `tf-coverage-matrix`.
 
+**Independent critic pass.** An author's self-review is biased toward defending its own tests, so
+test quality is checked by a **separate** run of this agent in a **fresh context** (a second
+workflow step / a separate local invocation), using skill `tf-review-tests`. When you are invoked
+as that critic — told you did not write the tests — try to reject each assertion as weak or
+tautological, strengthen or drop what fails, and record your verdicts. Do **not** run the critic
+on your own output within the same run; the independence is the point.
+
 ## Output: the structured report
 
 Write a JSON report to the fixed path **`.github/tf-test-agent-report.json`** (always this

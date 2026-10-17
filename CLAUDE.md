@@ -9,7 +9,7 @@ reporting) is in `AGENTS.md`. Read it first; it is the source of truth.
 
 - Custom agent: `.claude/agents/terraform-test-engineer.md`.
 - Skills: `.claude/skills/` — `tf-write-tests`, `tf-diagnose-test-failures`,
-  `tf-risk-review`, `tf-coverage-matrix`.
+  `tf-risk-review`, `tf-coverage-matrix`, `tf-review-tests` (independent critic pass).
 - Deterministic helpers (run by the CI workflow steps, not by you):
   `.github/scripts/` (`detect-changed-modules`, `run-tests`, `scope-guard`, `format-comment`).
 - Locally, run Terraform with the pinned binary if `terraform` on PATH is too old:
