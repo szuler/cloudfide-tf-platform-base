@@ -33,6 +33,13 @@ never change the code — you inform.
 - **Why it matters** (the concrete risk).
 - **Confidence:** `fact` (you can see it directly), `likely` (strong inference), or
   `hypothesis` (worth a look, not certain). Never present a guess as a fact.
+  - A setting written in the repo (e.g. `min_tls_version = "TLS1_1"`) is a `fact` — you see it.
+  - A claim about a **provider default that the module does not set** (e.g. "`azurerm`
+    defaults `internet_ingestion_enabled` to `true`") is at most `likely`, never `fact`: you
+    have no network access to confirm it against the pinned provider version (`azurerm ~> 4.0`).
+    Phrase it as "per the azurerm docs — verify against the pinned version" and set
+    `confidence: "likely"`. What you *can* state as `fact` is only that the module itself does
+    not set the attribute.
 - **Suggested direction** — a direction for a human, not a decision or a code change.
 
 Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (hygiene),
