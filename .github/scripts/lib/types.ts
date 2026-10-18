@@ -88,4 +88,15 @@ export interface Report {
   testReview?: TestReviewVote[];
   /** When set, the agent did not run; everything else is ignored and this reason is shown. */
   notRun?: string;
+  /** Deterministic checks the agent run failed (missing report/decisions). Fails the job. */
+  problems?: string[];
+  /** Non-blocking signals worth a reviewer's attention (e.g. blocked tool calls). */
+  warnings?: string[];
+}
+
+/** What the agent passes write to the report file, before the workflow merges test results in. */
+export interface AgentReport {
+  decisions?: AgentDecision[];
+  findings?: Finding[];
+  testReview?: TestReviewVote[];
 }
