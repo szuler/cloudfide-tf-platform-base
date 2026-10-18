@@ -322,12 +322,32 @@ level.
   - per-team conventions in each module's own `AGENTS.md` section, while the boundaries stay
     central;
   - a severity policy agreed with security, not left to the model.
-- **More repositories:**
-  - ship the workflow as a reusable `workflow_call` workflow, with the agent, skills and scripts
-    as a versioned package;
-  - each repo pins a version and upgrades deliberately, because a skill change is a behaviour
-    change;
-  - collect the JSON artifacts centrally for cost, findings and mutation-score trends.
+- **More than one Terraform repository:** move the agent into its own repository.
+  - **One repository owns the agent:** `AGENTS.md`, the agent, the skills, the scripts, and the
+    workflow as a **reusable (`workflow_call`) workflow**.
+  - **Each Terraform repository is a thin caller:**
+    `uses: <org>/tf-test-agent/.github/workflows/tf-test-agent.yml@<tag or SHA>`, plus its own
+    secret and path filters.
+  - **Versioning:** each caller pins a version and upgrades deliberately, because a skill change
+    is a behaviour change.
+  - **Security improves.** Today the agent's configuration comes from the PR's base branch, so
+    anyone who can merge to main can change how the agent behaves. With a separate repository,
+    it comes from a pinned release of the agent repository instead.
+    - The workflow would check that release out next to the code.
+    - The config-restore check would compare against that release.
+  - **Cross-repository metrics:** collect the JSON artifacts centrally for cost, findings and
+    mutation-score trends.
+- **Other providers (AWS, GCP):**
+  - **Mostly provider-agnostic already:** the workflow and the scripts (detect, scope guard, test
+    run, report, ledger). So is the approach in the skills.
+  - **Azure-specific:** the risk checklist, the test examples, the `mock_provider "azurerm"`
+    conventions, and the mutation set (`"TLS1_2"`, `default_action = "Deny"`, …).
+  - **The extension:**
+    - read the providers from each module's `required_providers`;
+    - load a provider-specific skill pack (e.g. `tf-risk-review-aws`: public S3 ACLs,
+      `publicly_accessible`, unencrypted volumes, `0.0.0.0/0` ingress) and a provider-specific
+      set of mutations;
+    - keep the generic skills shared.
 - **Prompt changes need regression tests:** keep a set of "golden" PRs with known expected
   outcomes, such as the PR #5 and PR #11 cases, and re-run them before releasing a skill change.
 
@@ -343,17 +363,50 @@ level.
    - "Caught by the old tests, survives the new ones" is the only deterministic signal that
      tests were weakened.
    - The cost is roughly twice the mutation time.
-4. **Make findings more reliable:**
+4. **Ground the agent in the azurerm provider documentation (RAG).** Most wrong or unhedged
+   findings came from memory: what a role grants, valid category names, NIC naming rules.
+   - **Index the docs for the exact provider version** in `.terraform.lock.hcl`, along with the
+     Azure built-in roles reference. A deterministic workflow step fetches them, outside the
+     agent.
+   - **Give the agent read-only search over that index**: local files or an MCP server with one
+     `search_docs` tool. It keeps no network access.
+   - **Require a citation** (doc and section) for every claim about provider or Azure behaviour.
+   - **Check citations deterministically:** a claim without one is downgraded to `likely`, and a
+     cited section must exist in the index.
+5. **Make findings more reliable:**
    - a fixed severity scale with examples;
    - each finding split into what is observed (`fact`) and what is explained (`likely`);
    - a post-check that downgrades unverified Azure claims;
    - deterministic scanners (Checkov, tfsec, Conftest) next to the agent, so known misconfigs
      such as `ftps_state = "AllAllowed"` are caught by rules, not by luck.
-5. **Wider scope:**
+6. **Review and tighten the tools `claude-code-action` gives the agent.** Today both passes get
+   `Read, Write, Edit, Glob, Grep, Bash(terraform:*)` and read-only `git`, with web tools denied.
+   That's narrower than the default, but still broad:
+   - **Path-scope the file tools.** `Read`, `Write` and `Edit` have no path restriction.
+     - The scope guard catches a change **inside the git tree**, but only after the fact.
+     - Nothing stops a write **outside** it. The workflow keeps its own state in `/tmp`
+       (`changed-targets.json`, `author-test-changes.txt`, a copy of the author's execution
+       file), and the critic runs after those files are written. An agent that overwrote them
+       could, for example, change which modules the authoritative test run covers.
+     - Fixes: restrict `Write`/`Edit` to test paths with path-scoped permission rules; restrict
+       `Read` to the repository; keep workflow state where the agent can't write it, or
+       recompute it after the agent passes (detect is deterministic and cheap).
+   - **Narrow `Bash(terraform:*)`** to the subcommands the skills use (`init`, `validate`, `fmt`,
+     `test`) and to module directories. Today it allows any subcommand, `-chdir` to any path,
+     `console`, `providers mirror`.
+   - **Restrict network egress** on the runner to the Anthropic API, the Terraform registry and
+     GitHub, for example with an egress-filtering step. `terraform init` needs the registry; a
+     pre-filled provider cache or mirror could remove even that.
+   - **Scan the agent's commit for secrets** (e.g. gitleaks) before it's pushed. A
+     prompt-injected agent's only way to publish data is a test file, and the scope guard
+     allows test files.
+   - Each of these needs **verifying against the action's actual permission behaviour**, the
+     same way the first permission bug was found: by running it, not by reading the docs.
+7. **Wider scope:**
    - the critic over all of a changed module's tests;
    - stack-level tests and a cross-module review (the private-DNS case);
    - apply-level tests in a sandbox subscription before release.
-6. **Run the same contract on GitHub Copilot as well**, if that's the team's platform, to avoid
+8. **Run the same contract on GitHub Copilot as well**, if that's the team's platform, to avoid
    depending on one vendor (the thin adapter is already there, untested).
 
 ## How the LLM was controlled and verified
