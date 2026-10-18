@@ -105,7 +105,10 @@ jobs:
             --max-turns 40
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(terraform:*),Bash(git diff:*),Bash(git log:*),Bash(git status:*)"
             --disallowedTools "WebFetch,WebSearch"
-          show_full_output: true
+          # The full transcript (every message and tool result) goes to the Actions log only
+          # when debugging: `gh variable set TF_AGENT_DEBUG --body true`. The action warns
+          # that it can expose sensitive output and that logs are public in a public repo.
+          show_full_output: ${{ vars.TF_AGENT_DEBUG == 'true' }}
           prompt: |
             Read `.claude/agents/terraform-test-engineer.md` — it is your governing system
             prompt. Read `AGENTS.md` for the repository contract.
