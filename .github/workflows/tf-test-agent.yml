@@ -64,8 +64,21 @@ jobs:
             const d = JSON.parse(require('fs').readFileSync('/tmp/changed-targets.json', 'utf8'));
             process.stdout.write(String(d.targets.length));
           ")
+          # One line per target with git's new-vs-existing fact, so the agent doesn't
+          # have to infer it (it used to guess "new module" from a missing tests/ dir).
+          TARGET_SUMMARY=$(node -e "
+            const d = JSON.parse(require('fs').readFileSync('/tmp/changed-targets.json', 'utf8'));
+            process.stdout.write(d.targets.map(t =>
+              '- ' + t.dir + ' — ' + (t.isNew ? 'NEW in this PR (absent at the base commit)' : 'EXISTING ' + t.kind + ' (present at the base commit)')
+            ).join('\n'));
+          ")
           echo "target_count=$TARGET_COUNT" >> "$GITHUB_OUTPUT"
           echo "target_dirs=$TARGET_DIRS" >> "$GITHUB_OUTPUT"
+          {
+            echo 'target_summary<<TARGET_SUMMARY_EOF'
+            echo "$TARGET_SUMMARY"
+            echo 'TARGET_SUMMARY_EOF'
+          } >> "$GITHUB_OUTPUT"
 
       # ── configure git (used by the commit step later) ────────────────────────
 
@@ -108,11 +121,16 @@ jobs:
             `terraform` and read-only `git` commands — run Terraform as
             `terraform -chdir=<module-dir> <command>` (no `cd`, no `&&` chains).
 
-            The following Terraform module(s) changed in this PR:
-              ${{ steps.detect.outputs.target_dirs }}
+            The following Terraform module(s) changed in this PR (new vs existing is
+            determined by git — do not re-derive it, and describe the change accordingly):
+            ${{ steps.detect.outputs.target_summary }}
+
+            To see exactly what changed, run this command as-is for each module (there is
+            no local `main` branch in this checkout; use the base commit SHA):
+              git diff ${{ github.event.pull_request.base.sha }}...HEAD -- <module-dir>
 
             For each module directory listed above:
-              1. List and read all *.tf files in that directory to understand the module.
+              1. Run the diff above, then list and read all *.tf files in that directory.
               2. Classify the change: behaviour-affecting (new/changed variable, default,
                  conditional, resource, validation, count, output) or cosmetic (comments,
                  formatting). Record your classification in the report's `decisions` array.

@@ -74,6 +74,19 @@ test("missing decisions under a problem are not rendered as 'nothing to do' (neg
   assert.ok(!md.includes("No Terraform changes required test updates"));
 });
 
+test("decision shows git's new/existing fact and labels the action as about tests", () => {
+  const existing = renderComment({
+    ...baseReport,
+    decisions: [{ target: "modules/network", action: "created", reason: "r", targetIsNew: false }],
+  });
+  assert.ok(existing.includes("**modules/network** _(existing)_ — tests created: r"));
+  const fresh = renderComment({
+    ...baseReport,
+    decisions: [{ target: "modules/x", action: "created", reason: "r", targetIsNew: true }],
+  });
+  assert.ok(fresh.includes("_(new in this PR)_"));
+});
+
 test("no findings renders a placeholder", () => {
   const md = renderComment({ ...baseReport, findings: [] });
   assert.ok(md.includes("No findings"));

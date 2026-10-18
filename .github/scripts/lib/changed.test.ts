@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectChangedTargets } from "./changed.ts";
+import { detectChangedTargets, markNewTargets } from "./changed.ts";
+
+test("markNewTargets flags only dirs missing at the base commit", () => {
+  const r = markNewTargets(
+    detectChangedTargets(["modules/network/main.tf", "modules/brand-new/main.tf"]),
+    (dir) => dir === "modules/network",
+  );
+  assert.equal(r.targets.find((t) => t.dir === "modules/network")?.isNew, false);
+  assert.equal(r.targets.find((t) => t.dir === "modules/brand-new")?.isNew, true);
+});
 
 test("groups changed files by module", () => {
   const r = detectChangedTargets([

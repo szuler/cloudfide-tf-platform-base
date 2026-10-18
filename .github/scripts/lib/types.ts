@@ -8,6 +8,8 @@ export interface ChangedTarget {
   name: string;
   dir: string;
   files: string[];
+  /** True when the dir did not exist at the PR's base commit. Set from git, never by the agent. */
+  isNew?: boolean;
 }
 
 export interface DetectResult {
@@ -77,6 +79,8 @@ export interface AgentDecision {
   action: "created" | "updated" | "skipped";
   reason: string;
   skillsUsed?: string[];
+  /** Whether the target is new in this PR — filled in by the workflow from git, not the agent. */
+  targetIsNew?: boolean;
 }
 
 /** The full report the workflow renders into a PR comment and job summary. */
