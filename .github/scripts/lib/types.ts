@@ -51,6 +51,15 @@ export interface ModuleTestResult {
 
 export type Severity = "info" | "low" | "medium" | "high";
 export type Confidence = "fact" | "likely" | "hypothesis";
+export type CriticVerdict = "keep" | "strengthen" | "drop";
+
+export interface TestReviewVote {
+  file: string;
+  run: string;
+  verdict: CriticVerdict;
+  reason: string;
+  applied?: boolean;
+}
 
 /** A reviewer-facing finding produced by the agent. Facts vs hypotheses are explicit. */
 export interface Finding {
@@ -75,6 +84,8 @@ export interface Report {
   decisions: AgentDecision[];
   results: ModuleTestResult[];
   findings: Finding[];
+  /** Verdicts from the independent critic pass (tf-review-tests). */
+  testReview?: TestReviewVote[];
   /** When set, the agent did not run; everything else is ignored and this reason is shown. */
   notRun?: string;
 }

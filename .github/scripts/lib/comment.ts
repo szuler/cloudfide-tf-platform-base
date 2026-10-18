@@ -1,5 +1,5 @@
 // Pure logic: render the single sticky PR comment (and job summary) markdown.
-import type { Finding, ModuleTestResult, Report, Severity } from "./types.ts";
+import type { Finding, ModuleTestResult, Report, Severity, TestReviewVote } from "./types.ts";
 
 /** Hidden marker so the workflow can find-and-update one comment instead of spamming. */
 export const COMMENT_MARKER = "<!-- tf-test-agent -->";
@@ -21,6 +21,18 @@ function renderTestRow(r: ModuleTestResult): string {
     detail = "no result parsed";
   }
   return `| \`${r.dir}\` | ${statusIcon(r.ok)} | ${detail} |`;
+}
+
+function renderTestReview(votes: TestReviewVote[]): string {
+  if (votes.length === 0) return "_All assertions passed independent review._";
+  const icons: Record<string, string> = { keep: "✅", strengthen: "🔧", drop: "🗑️" };
+  return votes
+    .map((v) => {
+      const icon = icons[v.verdict] ?? "?";
+      const applied = v.applied ? " _(applied)_" : "";
+      return `- ${icon} **${v.verdict}** \`${v.run}\` in \`${v.file}\` — ${v.reason}${applied}`;
+    })
+    .join("\n");
 }
 
 function renderFindings(findings: Finding[]): string {
@@ -58,6 +70,10 @@ export function renderComment(report: Report): string {
   parts.push("### Test results", "", "| Target | Status | Detail |", "| --- | --- | --- |");
   for (const r of report.results) parts.push(renderTestRow(r));
   parts.push("");
+
+  if (report.testReview !== undefined) {
+    parts.push("### Independent test review", "", renderTestReview(report.testReview), "");
+  }
 
   parts.push("### Findings for the reviewer", "", renderFindings(report.findings), "");
 
