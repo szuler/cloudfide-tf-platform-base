@@ -187,7 +187,7 @@ test("ledger shows what the agent did even when the latest run changed nothing",
   const md = renderLedger({ rows: [first, second] }, new Set(["c1c1c1c1"]));
   assert.ok(md.startsWith(LEDGER_MARKER));
   assert.ok(md.includes(`\`${TEST_FILE}\` created (+5 runs)`));
-  assert.ok(md.includes("| [#2](https://example/runs/200) | `aaaaaaa` | ✅ 5/5 | no test changes | 1/2 |"));
+  assert.ok(md.includes("| [2](https://example/runs/200) | `aaaaaaa` | ✅ 5/5 | no test changes | 1/2 |"));
   assert.ok(decodeState(md)?.rows.length === 2);
 });
 
@@ -203,8 +203,8 @@ test("an oversized ledger drops the oldest details and state bulk but keeps ever
   const rows: LedgerRow[] = [big, rowFromReport(report, ctx)];
   const md = renderLedger({ rows }, new Set());
   assert.ok(md.length <= MAX_COMMENT_CHARS);
-  assert.ok(md.includes("| #1 _(earlier run)_"));
-  assert.ok(md.includes("Run #2 — decisions"));
+  assert.ok(md.includes("| 1 _(earlier run)_"));
+  assert.ok(md.includes("Run 2 — decisions"));
   assert.equal(decodeState(md)?.rows.length, 2);
   assert.equal(rows[0]?.legacyBody?.length, MAX_COMMENT_CHARS); // caller's ledger untouched
 });
@@ -240,7 +240,7 @@ test("no attribution label when it was not recorded (older rows)", () => {
 test("run comment without test changes points the reviewer to the ledger", () => {
   const md = renderRunComment(report, rowFromReport(report, ctx), 2);
   assert.ok(md.startsWith(RUN_MARKER));
-  assert.ok(md.includes("run #2"));
+  assert.ok(md.includes("— run 2"));
   assert.ok(md.includes(`**No test changes in this run.**`));
   assert.ok(md.includes(LEDGER_URL_PLACEHOLDER));
   assert.ok(!md.includes(LEGACY_MARKER));
@@ -268,14 +268,26 @@ test("run numbers link to their report comments, with the workflow log as a seco
   ]);
   urls.set("https://example/runs/200", RUN_COMMENT_URL_PLACEHOLDER);
   const md = renderLedger({ rows: [first, second] }, new Set(), urls);
-  assert.ok(md.includes("| [#1](https://gh/pr/5#issuecomment-1) · [log](https://example/runs/100) |"));
-  assert.ok(md.includes(`| [#2](${RUN_COMMENT_URL_PLACEHOLDER}) · [log](https://example/runs/200) |`));
-  assert.ok(md.includes("- [Full report of run #1](https://gh/pr/5#issuecomment-1)"));
+  assert.ok(md.includes("| [1](https://gh/pr/5#issuecomment-1) · [log](https://example/runs/100) |"));
+  assert.ok(md.includes(`| [2](${RUN_COMMENT_URL_PLACEHOLDER}) · [log](https://example/runs/200) |`));
+  assert.ok(md.includes("- [Full report of run 1](https://gh/pr/5#issuecomment-1)"));
 });
 
 test("a row whose report comment is gone falls back to the workflow log (edge)", () => {
   const row = rowFromReport(report, { ...ctx, runUrl: "https://example/runs/100" });
   const md = renderLedger({ rows: [row] }, new Set(), runCommentUrls([]));
-  assert.ok(md.includes("| [#1](https://example/runs/100) |"));
+  assert.ok(md.includes("| [1](https://example/runs/100) |"));
   assert.ok(!md.includes("Full report of run"));
+});
+
+test("no plain #N outside links: GitHub would autolink it to issue/PR N (negative)", () => {
+  const rows = [
+    { source: "history" as const, agentCommit: "c1c1c1c1", changes: commit1.changes, legacyBody: "old report" },
+    rowFromReport(report, { ...ctx, runUrl: "https://example/runs/200" }),
+  ];
+  const urls = new Map([["https://example/runs/200", "https://gh/pr/5#issuecomment-9"]]);
+  const outsideLinks = (md: string) =>
+    md.replace(/\[[^\]]*\]\([^)]*\)/g, "").replace(/https?:\/\/\S+/g, "").replace(/<!--[\s\S]*?-->/g, "");
+  assert.doesNotMatch(outsideLinks(renderLedger({ rows }, new Set(["c1c1c1c1"]), urls)), /(^|[^\w&])#\d/m);
+  assert.doesNotMatch(outsideLinks(renderRunComment(report, rows[1]!, 2)), /(^|[^\w&])#\d/m);
 });
