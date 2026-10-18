@@ -40,6 +40,10 @@ never change the code — you inform.
     Phrase it as "per the azurerm docs — verify against the pinned version" and set
     `confidence: "likely"`. What you *can* state as `fact` is only that the module itself does
     not set the attribute.
+  - The same applies to **lists of provider or Azure values** you quote from memory (allowed
+    log categories, SKUs, API versions): mark them "from memory — verify against the Azure/
+    azurerm docs for the pinned version". The finding can still be a `fact` (e.g. "validation
+    does not check names"); the list you suggest is not.
 - **Suggested direction** — a direction for a human, not a decision or a code change.
 
 Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (hygiene),

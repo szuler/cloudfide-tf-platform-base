@@ -1,5 +1,13 @@
 // Pure logic: render the single sticky PR comment (and job summary) markdown.
-import type { AgentDecision, Finding, ModuleTestResult, Report, Severity, TestReviewVote } from "./types.ts";
+import type {
+  AgentDecision,
+  Finding,
+  ModuleTestResult,
+  MutationReport,
+  Report,
+  Severity,
+  TestReviewVote,
+} from "./types.ts";
 
 /** Hidden marker so the workflow can find-and-update one comment instead of spamming. */
 export const COMMENT_MARKER = "<!-- tf-test-agent -->";
@@ -42,6 +50,28 @@ function renderTestReview(votes: TestReviewVote[]): string {
     .join("\n");
 }
 
+function renderMutations(reports: MutationReport[]): string {
+  const out = [
+    "_Each mutation plants one small bug in a copy of the module; a good suite fails on it. " +
+      "A survivor is a signal for the reviewer, not a defect — some bugs cannot be seen at plan " +
+      "level with a mocked provider._",
+    "",
+  ];
+  for (const r of reports) {
+    if (r.note) {
+      out.push(`- \`${r.dir}\`: ${r.note}`);
+      continue;
+    }
+    const caught = r.results.filter((x) => x.outcome === "caught").length;
+    const survived = r.results.filter((x) => x.outcome === "survived");
+    const invalid = r.results.filter((x) => x.outcome === "invalid").length;
+    const ignored = invalid ? `, ${invalid} invalid mutant(s) ignored` : "";
+    out.push(`- \`${r.dir}\`: ${caught}/${caught + survived.length} caught${ignored}`);
+    for (const s of survived) out.push(`  - ⚠️ survived \`${s.name}\` (\`${s.file}\`) — ${s.hint}`);
+  }
+  return out.join("\n");
+}
+
 function renderFindings(findings: Finding[]): string {
   if (findings.length === 0) return "_No findings._";
   const sorted = [...findings].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
@@ -56,7 +86,12 @@ function renderFindings(findings: Finding[]): string {
 }
 
 export function renderComment(report: Report): string {
-  const parts: string[] = [COMMENT_MARKER, "## 🧪 Terraform Test Agent", ""];
+  return [COMMENT_MARKER, "## 🧪 Terraform Test Agent", "", renderReportBody(report)].join("\n");
+}
+
+/** The report sections without the marker and title, so the per-run comment can add its own. */
+export function renderReportBody(report: Report): string {
+  const parts: string[] = [];
 
   if (report.notRun) {
     parts.push(`> ⚠️ **Agent did not run:** ${report.notRun}`, "");
@@ -93,6 +128,10 @@ export function renderComment(report: Report): string {
 
   if (report.testReview !== undefined) {
     parts.push("### Independent test review", "", renderTestReview(report.testReview), "");
+  }
+
+  if (report.mutations?.length) {
+    parts.push("### Mutation check (informational)", "", renderMutations(report.mutations), "");
   }
 
   parts.push("### Findings for the reviewer", "", renderFindings(report.findings), "");

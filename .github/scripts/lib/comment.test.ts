@@ -87,6 +87,31 @@ test("decision shows git's new/existing fact and labels the action as about test
   assert.ok(fresh.includes("_(new in this PR)_"));
 });
 
+test("mutation check lists survivors and does not count invalid mutants", () => {
+  const md = renderComment({
+    ...baseReport,
+    mutations: [
+      {
+        dir: "modules/data-factory",
+        results: [
+          { name: "dynamic-value-corrupt", file: "main.tf", outcome: "survived", hint: "counts, not values" },
+          { name: "validation-disabled", file: "variables.tf", outcome: "caught", hint: "h" },
+          { name: "count-flip", file: "main.tf", outcome: "invalid", hint: "h" },
+        ],
+      },
+      { dir: "modules/network", results: [], note: "no applicable mutation — not checked" },
+    ],
+  });
+  assert.ok(md.includes("### Mutation check (informational)"));
+  assert.ok(md.includes("`modules/data-factory`: 1/2 caught, 1 invalid mutant(s) ignored"));
+  assert.ok(md.includes("survived `dynamic-value-corrupt` (`main.tf`) — counts, not values"));
+  assert.ok(md.includes("`modules/network`: no applicable mutation — not checked"));
+});
+
+test("no mutation section when the check did not run", () => {
+  assert.ok(!renderComment(baseReport).includes("Mutation check"));
+});
+
 test("no findings renders a placeholder", () => {
   const md = renderComment({ ...baseReport, findings: [] });
   assert.ok(md.includes("No findings"));

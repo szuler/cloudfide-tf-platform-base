@@ -52,6 +52,15 @@ test("git's new-vs-existing fact is attached to decisions, overriding the agent"
   assert.equal(r.decisions[0]?.targetIsNew, false);
 });
 
+test("mutation results pass through and never become problems", () => {
+  const mutations = [
+    { dir: "modules/network", results: [{ name: "count-flip", file: "main.tf", outcome: "survived" as const, hint: "h" }] },
+  ];
+  const r = mergeReport({ agent, results: [], targets: [{ dir: "modules/network", isNew: false }], denials: {}, mutations });
+  assert.equal(r.problems, undefined);
+  assert.deepEqual(r.mutations, mutations);
+});
+
 test("countPermissionDenials reads the result message of an execution file", () => {
   const execution = [
     { type: "system", subtype: "init" },

@@ -83,6 +83,29 @@ export interface AgentDecision {
   targetIsNew?: boolean;
 }
 
+/**
+ * - caught:   a test run failed — an assertion (or an unmet expect_failures) noticed the bug.
+ * - survived: the suite still passes — a coverage gap.
+ * - invalid:  init failed, Terraform crashed, or runs only errored — the mutant itself is
+ *             broken, so it says nothing about the tests and must not count as caught.
+ */
+export type MutationOutcome = "caught" | "survived" | "invalid";
+
+export interface MutationResult {
+  name: string;
+  file: string;
+  outcome: MutationOutcome;
+  hint: string;
+}
+
+/** Mutation check of one module's test suite. Informational: never fails the job. */
+export interface MutationReport {
+  dir: string;
+  results: MutationResult[];
+  /** Set when nothing was checked (no tests, no applicable mutation). */
+  note?: string;
+}
+
 /** The full report the workflow renders into a PR comment and job summary. */
 export interface Report {
   decisions: AgentDecision[];
@@ -96,6 +119,57 @@ export interface Report {
   problems?: string[];
   /** Non-blocking signals worth a reviewer's attention (e.g. blocked tool calls). */
   warnings?: string[];
+  /** Mutation check of the final test suites (deterministic, informational). */
+  mutations?: MutationReport[];
+}
+
+/** A test file the agent's commit touched — read from git, not from the agent's report. */
+export interface TestFileChange {
+  path: string;
+  status: "created" | "updated" | "deleted";
+  runsAdded: number;
+  runsRemoved: number;
+}
+
+/** One agent run in the PR ledger. */
+export interface LedgerRow {
+  /** "run": recorded by that run. "history": rebuilt from git / the pre-ledger comment. */
+  source: "run" | "history";
+  runId?: string;
+  runUrl?: string;
+  /** The PR head the run evaluated. */
+  headSha?: string;
+  /** The test commit the agent pushed, if any. */
+  agentCommit?: string;
+  status?: "ok" | "failed" | "not-run";
+  tests?: { passed: number; total: number };
+  mutation?: { caught: number; scored: number };
+  changes: TestFileChange[];
+  decisions?: Array<Pick<AgentDecision, "target" | "action" | "reason">>;
+  review?: Record<CriticVerdict, number>;
+  findings?: number;
+  problems?: string[];
+  /** Body of the pre-ledger comment, kept verbatim when it is adopted as the ledger. */
+  legacyBody?: string;
+}
+
+export interface Ledger {
+  rows: LedgerRow[];
+}
+
+/** An existing PR comment written by the workflow (already filtered to the bot's own). */
+export interface PrComment {
+  id: number;
+  node_id: string;
+  html_url: string;
+  body: string;
+}
+
+/** An agent commit found in the PR's history. */
+export interface AgentCommit {
+  sha: string;
+  parent?: string;
+  changes: TestFileChange[];
 }
 
 /** What the agent passes write to the report file, before the workflow merges test results in. */

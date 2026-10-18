@@ -1,7 +1,7 @@
 // Pure logic: merge the agents' report with the authoritative test results, and check that
 // the agent run actually did its job — so a silently blocked agent can never render as a
 // green "nothing to do" comment.
-import type { AgentReport, ChangedTarget, ModuleTestResult, Report } from "./types.ts";
+import type { AgentReport, ChangedTarget, ModuleTestResult, MutationReport, Report } from "./types.ts";
 
 /**
  * Count blocked tool calls in a Claude Code execution file (the action's `execution_file`
@@ -28,9 +28,11 @@ export interface MergeInput {
   targets: Pick<ChangedTarget, "dir" | "isNew">[];
   /** Blocked tool calls per agent pass, e.g. { author: 2, critic: 0 }. */
   denials: Record<string, number>;
+  /** Mutation check of the final suites; informational, never a problem. */
+  mutations?: MutationReport[];
 }
 
-export function mergeReport({ agent, results, targets, denials }: MergeInput): Report {
+export function mergeReport({ agent, results, targets, denials, mutations }: MergeInput): Report {
   const problems: string[] = [];
   const warnings: string[] = [];
 
@@ -62,5 +64,6 @@ export function mergeReport({ agent, results, targets, denials }: MergeInput): R
   };
   if (problems.length > 0) report.problems = problems;
   if (warnings.length > 0) report.warnings = warnings;
+  if (mutations?.length) report.mutations = mutations;
   return report;
 }
