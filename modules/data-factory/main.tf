@@ -26,11 +26,11 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
   target_resource_id         = azurerm_data_factory.this.id
   log_analytics_workspace_id = var.log_analytics_workspace_id
 
-  enabled_log {
-    category = "PipelineRuns"
-  }
+  dynamic "enabled_log" {
+    for_each = var.diagnostic_log_categories
 
-  enabled_log {
-    category = "ActivityRuns"
+    content {
+      category = enabled_log.value
+    }
   }
 }

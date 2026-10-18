@@ -24,6 +24,17 @@ variable "log_analytics_workspace_id" {
   type        = string
 }
 
+variable "diagnostic_log_categories" {
+  description = "Diagnostic log categories sent to the Log Analytics workspace."
+  type        = set(string)
+  default     = ["ActivityRuns", "PipelineRuns"]
+
+  validation {
+    condition     = length(var.diagnostic_log_categories) > 0
+    error_message = "At least one diagnostic log category must be enabled."
+  }
+}
+
 variable "linked_storage_accounts" {
   description = "Data lake accounts to link, by a short key. The value is the account's DFS endpoint."
   type        = map(string)
