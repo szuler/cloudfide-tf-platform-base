@@ -19,7 +19,8 @@ results:
 | [PR #11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11) (open, kept as a demo) | Backfill of `function-app`: mocking `data "external"`, plus a wrong finding that was fixed in the skills. |
 | [PR #3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3) (merged) | The simplest first run: `databricks-workspace`. |
 | [PR #13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13) (merged) | Backfill of `private-endpoint`, after the skill fixes from PR #12. |
-| PRs #2, #4, #6–#10, #12 (merged) | Changes to the agent itself, each one prompted by something a demo run showed. |
+| [Audit runs](https://github.com/szuler/cloudfide-tf-platform-base/actions/workflows/tf-test-audit.yml), then [PR #17](https://github.com/szuler/cloudfide-tf-platform-base/pull/17) and [PR #18](https://github.com/szuler/cloudfide-tf-platform-base/pull/18) (merged) | Review of the suites that existed before the PR workflow. The audit proposes tests as a patch without committing anything (`storage-account` 4/7 → 6/7, `key-vault` 2/4 → 4/4). A person applies the patch in a PR, and the test-only workflow re-runs it in CI with no agent and no API cost (see [How to run it](#how-to-run-it)). |
+| PRs #2, #4, #6–#10, #12, #14–#16 (merged) | Changes to the agent and its workflows, each one prompted by something a demo run showed. |
 
 ## How it works
 
