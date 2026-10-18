@@ -201,8 +201,12 @@ export function rowFromReport(report: Report, ctx: RunContext): LedgerRow {
 
 /**
  * Previous rows, then a history row for every agent commit no row knows about (this covers
- * PRs that ran before the ledger existed), then the current run. A re-run of the same workflow
- * run replaces its own row. The pre-ledger comment body is kept on the first history row.
+ * PRs that ran before the ledger existed), then the current run. The pre-ledger comment body is
+ * kept on the first history row.
+ *
+ * A re-run of the same workflow run replaces its own row, unless that earlier attempt changed
+ * tests: then it stays, marked as an earlier attempt, so what it committed is not lost. Agent
+ * commits that changed no test file (only an init artifact) are not runs worth a row.
  */
 export function updateLedger(
   previous: Ledger | null,
@@ -210,10 +214,16 @@ export function updateLedger(
   agentCommits: AgentCommit[],
   legacyBody?: string,
 ): Ledger {
-  const rows = (previous?.rows ?? []).filter((r) => !current.runId || r.runId !== current.runId);
+  const emptyHistory = (r: LedgerRow) => r.source === "history" && r.changes.length === 0 && !r.legacyBody;
+  const rows = (previous?.rows ?? [])
+    .filter((r) => !emptyHistory(r))
+    .flatMap((r): LedgerRow[] => {
+      if (!current.runId || r.runId !== current.runId) return [r];
+      return r.changes.length ? [{ ...r, earlierAttempt: true }] : [];
+    });
   const known = new Set([...rows, current].map((r) => r.agentCommit).filter(Boolean));
   const history: LedgerRow[] = agentCommits
-    .filter((c) => !known.has(c.sha))
+    .filter((c) => !known.has(c.sha) && c.changes.length > 0)
     .map((c) => ({ source: "history", headSha: c.parent, agentCommit: c.sha, changes: c.changes }));
 
   if (legacyBody && !previous) {
@@ -238,8 +248,9 @@ const STATUS_ICON: Record<NonNullable<LedgerRow["status"]>, string> = { ok: "✅
  */
 function runLabel(row: LedgerRow, n: number, commentUrl?: string): string {
   if (row.source === "history") return `${n} _(earlier run)_`;
-  if (commentUrl) return row.runUrl ? `[${n}](${commentUrl}) · [log](${row.runUrl})` : `[${n}](${commentUrl})`;
-  return row.runUrl ? `[${n}](${row.runUrl})` : `${n}`;
+  const attempt = row.earlierAttempt ? " _(earlier attempt)_" : "";
+  if (commentUrl) return row.runUrl ? `[${n}](${commentUrl}) · [log](${row.runUrl})${attempt}` : `[${n}](${commentUrl})${attempt}`;
+  return `${row.runUrl ? `[${n}](${row.runUrl})` : `${n}`}${attempt}`;
 }
 
 /**

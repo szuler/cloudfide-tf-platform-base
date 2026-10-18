@@ -44,6 +44,11 @@ never change the code — you inform.
     log categories, SKUs, API versions): mark them "from memory — verify against the Azure/
     azurerm docs for the pinned version". The finding can still be a `fact` (e.g. "validation
     does not check names"); the list you suggest is not.
+  - Likewise **what a role, permission or SKU grants or includes** (e.g. "Storage Blob Data
+    Contributor cannot delete blobs") is Azure behaviour you know from memory: at most
+    `likely`, marked "verify against the Azure built-in roles docs". It is easy to get wrong —
+    Contributor *does* include delete; Owner adds managing POSIX ACLs. Only the assignment you
+    see in the code (e.g. "assigns Storage Blob Data Owner") is a `fact`.
 - **Suggested direction** — a direction for a human, not a decision or a code change.
 
 Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (hygiene),
@@ -52,7 +57,11 @@ Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (h
 ## Discipline
 
 - Only report what the **diff** touches or what the changed behaviour makes relevant. Do not
-  audit the whole repo unless asked (that's the backfill task).
+  audit the whole repo unless asked.
+- **Exception — a module getting its first tests** (it had no `tests/` before this PR): the
+  whole module is in scope, because nobody has reviewed it through tests yet. Go through every
+  item under "What to look for" for all of the module's files, including `data "external"`
+  scripts, and report each risk you find — not only the ones next to the diff.
 - Prefer a few high-signal findings over a long noisy list.
 - A finding is something a reviewer should act on or weigh. Do not report things that are
   already fine ("secure default — no action needed"); if it needs no decision, leave it out.
