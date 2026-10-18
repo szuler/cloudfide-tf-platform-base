@@ -141,12 +141,14 @@ flowchart LR
 - *Why:* "the tests pass" says nothing about whether they would catch a bug. On PR #5 the first
   suite passed 5/5, yet it only **counted** log blocks. A bug that corrupted every category name
   still passed. The mutation check made that visible and measurable (1/4 → 3/4).
-- Scope comes from git (option "C1"):
+- What the headline score judges is decided by a fact from git. This was the simpler of the two
+  designs I considered:
   - if the module got its first tests in this PR, every mutant judges the agent's suite;
   - otherwise the headline is mutants on the lines the PR changed.
-- *Gave up:* a differential check (base suite vs head suite), which would also detect weakened
-  tests (see [Production](#what-would-change-for-a-production-version)). Mutations are plain
-  regexes, one per type and module: crude but transparent.
+- *Gave up, for now:* the more thorough design. It runs each mutant against both the old and the
+  new tests, which would also show tests that got weaker. It's proposed as a later improvement
+  (see [Production](#what-would-change-for-a-production-version)). Mutations are plain regexes,
+  one per type and module: crude but transparent.
 
 **PR comments that keep history.**
 - A single comment overwritten on every run would lose "the agent added these tests" as soon as
@@ -365,8 +367,8 @@ level.
    Scope guard and test failures should; findings shouldn't.
 2. **Workload identity federation** instead of a long-lived API key, plus per-repo budgets and
    alerts.
-3. **A differential mutation check (C2):** run each mutant against the base suite and the PR's
-   suite.
+3. **A differential mutation check** (the more thorough design deferred above): run each mutant
+   against the base suite and the PR's suite.
    - "Caught only by the new tests" shows what the PR added.
    - "Caught by the old tests, survives the new ones" is the only deterministic signal that
      tests were weakened.
