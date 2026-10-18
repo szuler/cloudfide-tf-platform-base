@@ -19,7 +19,8 @@ results:
 | [PR #11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11) (open, kept as a demo) | Backfill of `function-app`: mocking `data "external"`, plus a wrong finding that was fixed in the skills. |
 | [PR #3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3) (merged) | The simplest first run: `databricks-workspace`. |
 | [PR #13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13) (merged) | Backfill of `private-endpoint`, after the skill fixes from PR #12. |
-| PRs #2, #4, #6–#10, #12 (merged) | Changes to the agent itself, each one prompted by something a demo run showed. |
+| [Audit runs](https://github.com/szuler/cloudfide-tf-platform-base/actions/workflows/tf-test-audit.yml), then [PR #17](https://github.com/szuler/cloudfide-tf-platform-base/pull/17) and [PR #18](https://github.com/szuler/cloudfide-tf-platform-base/pull/18) (merged) | Review of the suites that existed before the PR workflow. The audit proposes tests as a patch without committing anything (`storage-account` 4/7 → 6/7, `key-vault` 2/4 → 4/4). A person applies the patch in a PR, and the test-only workflow re-runs it in CI with no agent and no API cost (see [How to run it](#how-to-run-it)). |
+| PRs #2, #4, #6–#10, #12, #14–#16 (merged) | Changes to the agent and its workflows, each one prompted by something a demo run showed. |
 
 ## How it works
 
@@ -284,6 +285,25 @@ shows all seven runs:
     same sentence says "9/12 before", then "4/12". The mutation check still finds an untested
     default (`is_data_lake = false`). The report is the agent's account; the before/after score
     is the evidence.
+- **Audits of the other three suites the agent had never reviewed** ($1.44 together, run in
+  parallel):
+  - [`key-vault`](https://github.com/szuler/cloudfide-tf-platform-base/actions/runs/39155942446):
+    **2/4 → 4/4.** It adds a guard on the default network action `Deny`, the role assignment's
+    `principal_id` checked against the input (not only counted), the subnet IDs wired from the
+    input, and an empty-readers edge case. Applied in PR #18.
+  - [`network`](https://github.com/szuler/cloudfide-tf-platform-base/actions/runs/39155944716):
+    1/1 → 1/1. Only one mutant applies, so the mutation check can't measure this patch. It adds
+    NSG names derived from the input, service endpoints, tags, and an empty-subnets edge case.
+    I reviewed it by hand and applied it in PR #18.
+  - [`log-analytics-workspace`](https://github.com/szuler/cloudfide-tf-platform-base/actions/runs/39155946647):
+    nothing measurable. It proposed one low-value test (the empty default `tags`), so **it wasn't
+    applied**: the suite was adequate.
+    - The agent deliberately didn't add an assertion on the hard-coded SKU ("billing tier —
+      tautological").
+    - It labelled the unset `internet_ingestion_enabled` (a provider default) `likely`, not
+      `fact`. Both are rules from the skills that held.
+  - All three reports again claim full coverage ("8/8", "4/4"). Where no mutant applies, that
+    stays the agent's account, not evidence.
 
 **Cost and time:** author + critic come to **$0.52–0.63 per run** on PRs #3, #5 and #13, and
 **$0.75–0.77** on PR #11 (a bigger module, a 12-run suite). Each pass takes about 2 minutes, the
@@ -303,9 +323,9 @@ modules can be compared.
 | `data-factory` | — | 6 runs | open PR [#5](https://github.com/szuler/cloudfide-tf-platform-base/pull/5) | 3/4 | default `public_network_enabled = true` |
 | `databricks-workspace` | — | 7 runs | main (via PR [#3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3)) | 2/2 | — |
 | `function-app` | — | 11 runs | open PR [#11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11) | 2/2 | — |
-| `key-vault` | 2 runs | 2 runs | main (original) | 2/4 | default network action `Deny`; role `principal_id` values (only counted) |
-| `log-analytics-workspace` | — | 3 runs | main (added during development, before the PR workflow existed) | not checked | — |
-| `network` | 3 runs | 3 runs | main (original) | 1/1 | — |
+| `key-vault` | 2 runs | 7 runs | main (original + audit, PR #18) | 4/4 (was 2/4) | — |
+| `log-analytics-workspace` | — | 3 runs | main (added during development; audited, nothing worth applying) | not checked | — |
+| `network` | 3 runs | 6 runs | main (original + audit, PR #18) | 1/1 | — (only one mutant applies) |
 | `private-endpoint` | — | 7 runs | main (via PR [#13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13)) | not checked | — |
 | `storage-account` | 3 runs | 7 runs | main (original + audit, PR [#17](https://github.com/szuler/cloudfide-tf-platform-base/pull/17)) | 6/7 (was 4/7) | default `is_data_lake = false` |
 | `stacks/data-platform` | — | — | — | — | not tested |
@@ -321,7 +341,9 @@ How to read it:
   score before vs after, without committing anything.
   - `storage-account` went through the whole loop: audit run → the patch applied unchanged in PR
     #17 → the test-only workflow re-ran it in CI (7/7 pass, 6/7 mutants, 54 s, no API cost).
-  - `key-vault` (2/4) is the obvious next audit.
+  - `key-vault` and `network` followed the same path in PR #18. `log-analytics-workspace` was
+    audited too, with nothing worth applying. So every module that had tests before the PR
+    workflow existed has now been reviewed.
 
 ## What the generated tests can and cannot show
 
@@ -385,7 +407,7 @@ level.
   succeeded.
 - **The audit is manual and runs one module at a time.** It has no critic pass: its independent
   check is the deterministic mutation score before vs after, plus the person who decides whether
-  to apply the patch. Running it on a schedule for every module is the obvious next step.
+  to apply the patch. A scheduled version is designed below, under Production, but not built.
 - **Changes to the agent or skills take effect only after merge to the base branch.** That's
   deliberate, but it means a skill change can't be tested on the PR that makes it.
 - **Terraform 1.16.6 crashes when an assertion on a diagnostic setting's `enabled_log` fails**
@@ -510,11 +532,27 @@ level.
        on every skill change;
      - reviewer feedback: 👍/👎 reactions on findings, read through the API, give a precision
        figure for findings that no gate can produce today.
-8. **Wider scope:**
+8. **Run the audit on a schedule (e.g. monthly).** Suites go stale. The PR workflow never revisits
+   an untouched module, and new skill rules only reach new tests. Today's audits found real gaps
+   in two of the original suites. It's cheap: about $0.5 per module, roughly $4 a month for this
+   repository. A useful version needs four things that a bare `schedule:` doesn't give:
+   - **A place for the results:** one tracking issue updated in place, like the PR summary
+     comment, with a row per module (mutations before → after, link to the patch, findings).
+     Artifacts alone go unread and expire after 90 days. This needs `issues: write`, still with
+     no PRs opened by the agent.
+   - **Skip modules that haven't changed** since their last audit, unless the agent or skills
+     changed. The model isn't deterministic, so re-auditing an unchanged module produces a
+     slightly different patch each month, which is noise.
+   - **A budget:** a matrix over modules with `max-parallel`, a cap on modules per run, and the
+     API spend limit as a backstop.
+   - **Liveness:** GitHub disables scheduled workflows in a public repository after 60 days
+     without activity. The tracking issue should show when the last run happened, so the audit
+     doesn't stop silently.
+9. **Wider scope:**
    - the critic over all of a changed module's tests;
    - stack-level tests and a cross-module review (the private-DNS case);
    - apply-level tests in a sandbox subscription before release.
-9. **Run the same contract on GitHub Copilot as well**, if that's the team's platform, to avoid
+10. **Run the same contract on GitHub Copilot as well**, if that's the team's platform, to avoid
    depending on one vendor (the thin adapter is already there, untested).
 
 ## How the LLM was controlled and verified
