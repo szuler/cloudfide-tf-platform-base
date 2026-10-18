@@ -201,6 +201,31 @@ jobs:
 
       # ── deterministic post-checks ─────────────────────────────────────────────
 
+      # claude-code-action treats agent config from the PR head as untrusted and, before
+      # each pass, overwrites it with the base branch's copy. So any PR that touches
+      # `.claude/` would leave a working-tree diff the scope guard can't tell apart from
+      # an agent edit. Check these paths against the base (what the agents actually saw).
+      # Any difference means an agent changed them, so fail. Otherwise put the PR's version
+      # back so the scope guard runs against a clean HEAD. New untracked files are still
+      # caught by the scope guard.
+      - name: Verify and undo the action's config restore
+        id: config-restore
+        if: steps.detect.outputs.target_count != '0'
+        continue-on-error: true
+        env:
+          BASE: origin/${{ github.event.pull_request.base.ref }}
+        run: |
+          PATHS=".claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky"
+          if ! git diff --quiet "$BASE" -- $PATHS; then
+            echo "::error::An agent modified restored config files:"
+            git diff --stat "$BASE" -- $PATHS
+            exit 1
+          fi
+          for p in $PATHS; do
+            if git cat-file -e "HEAD:$p" 2>/dev/null; then git checkout HEAD -- "$p"; fi
+          done
+          git status --short
+
       - name: Scope guard
         id: scope-guard
         if: steps.detect.outputs.target_count != '0'
@@ -228,6 +253,7 @@ jobs:
       - name: Commit and push test files
         if: >-
           steps.detect.outputs.target_count != '0' &&
+          steps.config-restore.outcome == 'success' &&
           steps.scope-guard.outcome == 'success'
         run: |
           git add -- modules/ stacks/
@@ -338,9 +364,10 @@ jobs:
       - name: Fail if agent, scope guard, tests, or report check failed
         if: >-
           steps.agent.outcome == 'failure' ||
+          steps.config-restore.outcome == 'failure' ||
           steps.scope-guard.outcome == 'failure' ||
           steps.run-tests.outcome == 'failure' ||
           steps.merge.outcome == 'failure'
         run: |
-          echo "::error::Workflow failed — agent: ${{ steps.agent.outcome }}, scope-guard: ${{ steps.scope-guard.outcome }}, run-tests: ${{ steps.run-tests.outcome }}, report: ${{ steps.merge.outcome }}"
+          echo "::error::Workflow failed — agent: ${{ steps.agent.outcome }}, config-restore: ${{ steps.config-restore.outcome }}, scope-guard: ${{ steps.scope-guard.outcome }}, run-tests: ${{ steps.run-tests.outcome }}, report: ${{ steps.merge.outcome }}"
           exit 1
