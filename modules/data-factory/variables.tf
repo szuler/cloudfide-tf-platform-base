@@ -14,7 +14,7 @@ variable "location" {
 }
 
 variable "public_network_enabled" {
-  description = "Allow access to the factory from the public internet."
+  description = "Allow access to the data factory from the public internet."
   type        = bool
   default     = true
 }
