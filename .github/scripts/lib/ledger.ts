@@ -231,11 +231,15 @@ const short = (sha?: string) => (sha ? `\`${sha.slice(0, 7)}\`` : "—");
 
 const STATUS_ICON: Record<NonNullable<LedgerRow["status"]>, string> = { ok: "✅", failed: "❌", "not-run": "⚪" };
 
-/** The run number links to that run's report comment; the workflow log is the second link. */
+/**
+ * The run number links to that run's report comment; the workflow log is the second link.
+ * Run numbers are never written as plain `#N` anywhere in these comments: GitHub autolinks
+ * `#N` to issue/PR N of the repo (backslash-escaping does not help inside <summary>).
+ */
 function runLabel(row: LedgerRow, n: number, commentUrl?: string): string {
-  if (row.source === "history") return `#${n} _(earlier run)_`;
-  if (commentUrl) return row.runUrl ? `[#${n}](${commentUrl}) · [log](${row.runUrl})` : `[#${n}](${commentUrl})`;
-  return row.runUrl ? `[#${n}](${row.runUrl})` : `#${n}`;
+  if (row.source === "history") return `${n} _(earlier run)_`;
+  if (commentUrl) return row.runUrl ? `[${n}](${commentUrl}) · [log](${row.runUrl})` : `[${n}](${commentUrl})`;
+  return row.runUrl ? `[${n}](${row.runUrl})` : `${n}`;
 }
 
 /**
@@ -292,7 +296,7 @@ function testsCell(row: LedgerRow): string {
 
 function rowDetails(row: LedgerRow, n: number, commentUrl?: string): string | null {
   if (row.legacyBody) {
-    return `<details><summary>Run #${n} — original report (posted before this summary existed)</summary>\n\n${row.legacyBody}\n\n</details>`;
+    return `<details><summary>Run ${n} — original report (posted before this summary existed)</summary>\n\n${row.legacyBody}\n\n</details>`;
   }
   if (!row.decisions?.length && !row.problems?.length) return null;
   const lines: string[] = [];
@@ -305,8 +309,8 @@ function rowDetails(row: LedgerRow, n: number, commentUrl?: string): string | nu
   if (row.review) extra.push(`critic: ${row.review.keep} keep, ${row.review.strengthen} strengthen, ${row.review.drop} drop`);
   if (row.findings !== undefined) extra.push(`${row.findings} finding(s)`);
   if (extra.length) lines.push(`- _${extra.join(" · ")}_`);
-  if (commentUrl) lines.push(`- [Full report of run #${n}](${commentUrl})`);
-  return `<details><summary>Run #${n} — decisions</summary>\n\n${lines.join("\n")}\n\n</details>`;
+  if (commentUrl) lines.push(`- [Full report of run ${n}](${commentUrl})`);
+  return `<details><summary>Run ${n} — decisions</summary>\n\n${lines.join("\n")}\n\n</details>`;
 }
 
 /**
@@ -362,7 +366,7 @@ export function renderRunComment(report: Report, row: LedgerRow, n: number): str
     : `**No test changes in this run.** Tests the agent added earlier in this PR are listed in the [summary](${LEDGER_URL_PLACEHOLDER}).`;
   const header = [
     RUN_MARKER,
-    `## 🧪 Terraform Test Agent — run #${n}`,
+    `## 🧪 Terraform Test Agent — run ${n}`,
     "",
     `Commit ${short(row.headSha)} · ${row.runUrl ? `[workflow run](${row.runUrl})` : "workflow run"} · [PR summary](${LEDGER_URL_PLACEHOLDER})`,
     "",
