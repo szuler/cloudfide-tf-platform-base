@@ -82,4 +82,7 @@ Test quality is checked by an **independent critic pass**: a separate, fresh-con
 agent (`tf-review-tests`) reviews the tests it did not write and tries to reject weak or
 tautological ones. This is a judgement layer that raises the quality of what reaches the human —
 it does **not** replace the deterministic gates (the workflow re-runs the tests itself and a scope
-guard enforces the boundaries); trust still comes from those.
+guard enforces the boundaries); trust still comes from those. After both passes, a deterministic
+**mutation check** (`.github/scripts/mutation-check.ts`) plants small bugs in copies of each
+changed module and reports which ones the final tests miss — evidence for the human reviewer,
+informational only.
