@@ -81,6 +81,8 @@ export interface AgentDecision {
   skillsUsed?: string[];
   /** Whether the target is new in this PR — filled in by the workflow from git, not the agent. */
   targetIsNew?: boolean;
+  /** Set when git contradicted the agent: what it reported, before `action` was corrected. */
+  reportedAction?: "created" | "updated" | "skipped";
 }
 
 /**
@@ -162,7 +164,7 @@ export interface LedgerRow {
   changes: TestFileChange[];
   /** Which pass changed each test file in this run (paths), from snapshots between passes. */
   changedBy?: { author: string[]; critic: string[] };
-  decisions?: Array<Pick<AgentDecision, "target" | "action" | "reason">>;
+  decisions?: Array<Pick<AgentDecision, "target" | "action" | "reason" | "reportedAction">>;
   review?: Record<CriticVerdict, number>;
   findings?: number;
   problems?: string[];

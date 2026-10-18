@@ -181,10 +181,11 @@ export function rowFromReport(report: Report, ctx: RunContext): LedgerRow {
     const { caught, scored } = score(report.mutations.flatMap(headlineResults));
     row.mutation = { caught, scored };
   }
-  row.decisions = report.decisions.map(({ target, action, reason }) => ({
+  row.decisions = report.decisions.map(({ target, action, reason, reportedAction }) => ({
     target,
     action,
     reason: oneLine(reason, 500),
+    ...(reportedAction ? { reportedAction } : {}),
   }));
   if (report.testReview !== undefined) {
     const review: Record<CriticVerdict, number> = { keep: 0, strengthen: 0, drop: 0 };
@@ -278,7 +279,10 @@ function rowDetails(row: LedgerRow, n: number): string | null {
   if (!row.decisions?.length && !row.problems?.length) return null;
   const lines: string[] = [];
   for (const p of row.problems ?? []) lines.push(`- ❌ ${p}`);
-  for (const d of row.decisions ?? []) lines.push(`- **${d.target}** — ${d.action}: ${d.reason}`);
+  for (const d of row.decisions ?? []) {
+    const action = d.reportedAction ? `${d.action} _(agent reported “${d.reportedAction}”; git shows no test changes)_` : d.action;
+    lines.push(`- **${d.target}** — ${action}: ${d.reason}`);
+  }
   const extra: string[] = [];
   if (row.review) extra.push(`critic: ${row.review.keep} keep, ${row.review.strengthen} strengthen, ${row.review.drop} drop`);
   if (row.findings !== undefined) extra.push(`${row.findings} finding(s)`);

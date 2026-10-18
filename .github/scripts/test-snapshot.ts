@@ -4,7 +4,7 @@
 // Snapshots go through a scratch git index, never the real index or working tree.
 // Usage:
 //   node scripts/test-snapshot.ts tree             print a tree id: HEAD + every current change under modules/ and stacks/
-//   node scripts/test-snapshot.ts changed <a> <b>  print "true" if test files differ between trees a and b, else "false"
+//   node scripts/test-snapshot.ts list <a> <b>     print each test file that differs between trees a and b
 //   node scripts/test-snapshot.ts restore <a> <b>  put test files that differ back to how they are in tree a
 //                                                  (b = the current state); print each restored path
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -44,8 +44,8 @@ function main(): void {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "tree") {
     process.stdout.write(`${snapshotTree()}\n`);
-  } else if (cmd === "changed" && a && b) {
-    process.stdout.write(`${testDiff(a, b).length > 0}\n`);
+  } else if (cmd === "list" && a && b) {
+    for (const c of testDiff(a, b)) process.stdout.write(`${c.path}\n`);
   } else if (cmd === "restore" && a && b) {
     for (const c of testDiff(a, b)) {
       // Added after `a`: remove it. Changed or deleted: bring back a's version (worktree only).
@@ -54,7 +54,7 @@ function main(): void {
       process.stdout.write(`${c.path}\n`);
     }
   } else {
-    process.stderr.write("usage: test-snapshot tree | changed <a> <b> | restore <a> <b>\n");
+    process.stderr.write("usage: test-snapshot tree | list <a> <b> | restore <a> <b>\n");
     process.exit(2);
   }
 }

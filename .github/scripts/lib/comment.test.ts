@@ -186,3 +186,11 @@ test("a verdict that was not applied reads as a suggestion; keep stays plain", (
   assert.ok(md.includes("`b` in `f` — r _(applied)_"));
   assert.ok(md.includes("`c` in `f` — fine\n") || md.endsWith("`c` in `f` — fine"));
 });
+
+test("a corrected decision shows git's fact and the agent's claim", () => {
+  const md = renderComment({
+    ...baseReport,
+    decisions: [{ target: "modules/x", action: "skipped", reportedAction: "created", reason: "r", targetIsNew: false }],
+  });
+  assert.ok(md.includes("- **modules/x** _(existing)_ — no test changes in this run _(the agent reported “tests created”)_: r"));
+});
