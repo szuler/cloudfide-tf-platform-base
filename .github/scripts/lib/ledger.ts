@@ -29,6 +29,8 @@ export const RUN_MARKER = "<!-- tf-test-agent:run -->";
 export const LEGACY_MARKER = "<!-- tf-test-agent -->";
 /** Replaced with the ledger comment's URL once the ledger has been posted. */
 export const LEDGER_URL_PLACEHOLDER = "{{LEDGER_URL}}";
+/** In the ledger: replaced with this run's report comment URL once that comment exists. */
+export const RUN_COMMENT_URL_PLACEHOLDER = "{{RUN_COMMENT_URL}}";
 /** GitHub's comment limit is 65,536 characters; stay well below it. */
 export const MAX_COMMENT_CHARS = 60_000;
 /** Runs whose details are shown in the ledger; older runs keep only their table row. */
@@ -229,9 +231,25 @@ const short = (sha?: string) => (sha ? `\`${sha.slice(0, 7)}\`` : "—");
 
 const STATUS_ICON: Record<NonNullable<LedgerRow["status"]>, string> = { ok: "✅", failed: "❌", "not-run": "⚪" };
 
-function runLabel(row: LedgerRow, n: number): string {
+/** The run number links to that run's report comment; the workflow log is the second link. */
+function runLabel(row: LedgerRow, n: number, commentUrl?: string): string {
   if (row.source === "history") return `#${n} _(earlier run)_`;
+  if (commentUrl) return row.runUrl ? `[#${n}](${commentUrl}) · [log](${row.runUrl})` : `[#${n}](${commentUrl})`;
   return row.runUrl ? `[#${n}](${row.runUrl})` : `#${n}`;
+}
+
+/**
+ * Report comment URL per workflow run URL. Each run comment links its workflow run in its
+ * header, so older rows are matched to their comments without storing anything new; a deleted
+ * comment simply falls back to the log link.
+ */
+export function runCommentUrls(runComments: PrComment[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const c of runComments) {
+    const m = /\[workflow run\]\(([^)\s]+)\)/.exec(c.body);
+    if (m) out.set(m[1]!, c.html_url);
+  }
+  return out;
 }
 
 export function describeChange(c: TestFileChange): string {
@@ -272,7 +290,7 @@ function testsCell(row: LedgerRow): string {
   return `${STATUS_ICON[row.status]} ${row.tests.passed}/${row.tests.total}`;
 }
 
-function rowDetails(row: LedgerRow, n: number): string | null {
+function rowDetails(row: LedgerRow, n: number, commentUrl?: string): string | null {
   if (row.legacyBody) {
     return `<details><summary>Run #${n} — original report (posted before this summary existed)</summary>\n\n${row.legacyBody}\n\n</details>`;
   }
@@ -287,11 +305,17 @@ function rowDetails(row: LedgerRow, n: number): string | null {
   if (row.review) extra.push(`critic: ${row.review.keep} keep, ${row.review.strengthen} strengthen, ${row.review.drop} drop`);
   if (row.findings !== undefined) extra.push(`${row.findings} finding(s)`);
   if (extra.length) lines.push(`- _${extra.join(" · ")}_`);
+  if (commentUrl) lines.push(`- [Full report of run #${n}](${commentUrl})`);
   return `<details><summary>Run #${n} — decisions</summary>\n\n${lines.join("\n")}\n\n</details>`;
 }
 
-/** `onBranch`: agent commits still reachable from the PR head. */
-export function renderLedger(ledger: Ledger, onBranch: Set<string>): string {
+/**
+ * `onBranch`: agent commits still reachable from the PR head. `commentUrls`: report comment
+ * URL per workflow run URL (see `runCommentUrls`); the current run's comment does not exist yet,
+ * so the caller maps it to `RUN_COMMENT_URL_PLACEHOLDER`.
+ */
+export function renderLedger(ledger: Ledger, onBranch: Set<string>, commentUrls = new Map<string, string>()): string {
+  const commentFor = (row: LedgerRow) => (row.runUrl ? commentUrls.get(row.runUrl) : undefined);
   const head = [
     LEDGER_MARKER,
     "## 🧪 Terraform Test Agent — summary for this PR",
@@ -304,11 +328,13 @@ export function renderLedger(ledger: Ledger, onBranch: Set<string>): string {
   ];
   ledger.rows.forEach((row, i) => {
     const mutation = row.mutation ? `${row.mutation.caught}/${row.mutation.scored}` : "—";
-    head.push(`| ${runLabel(row, i + 1)} | ${commitCell(row, onBranch)} | ${testsCell(row)} | ${changesCell(row)} | ${mutation} |`);
+    head.push(
+      `| ${runLabel(row, i + 1, commentFor(row))} | ${commitCell(row, onBranch)} | ${testsCell(row)} | ${changesCell(row)} | ${mutation} |`,
+    );
   });
 
   const details = ledger.rows
-    .map((row, i) => ({ i, text: rowDetails(row, i + 1) }))
+    .map((row, i) => ({ i, text: rowDetails(row, i + 1, commentFor(row)) }))
     .filter((d): d is { i: number; text: string } => d.text !== null)
     .slice(-DETAIL_ROWS);
   // The state is a copy, so slimming it below never changes the caller's ledger.

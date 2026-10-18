@@ -446,13 +446,18 @@ jobs:
             const plan = JSON.parse(read('comment-plan.json'));
             const repo = { owner: context.repo.owner, repo: context.repo.repo };
 
-            const ledgerBody = read('ledger.md');
+            // The ledger and this run's comment link to each other, and on the first run neither
+            // exists yet. So: post the ledger with this run's row linking to the workflow log,
+            // post the run comment (which needs the ledger's URL), then point the row at it.
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const ledgerWith = url => read('ledger.md').split('{{RUN_COMMENT_URL}}').join(url);
             const ledger = plan.ledgerCommentId
-              ? (await github.rest.issues.updateComment({ ...repo, comment_id: plan.ledgerCommentId, body: ledgerBody })).data
-              : (await github.rest.issues.createComment({ ...repo, issue_number: context.issue.number, body: ledgerBody })).data;
+              ? (await github.rest.issues.updateComment({ ...repo, comment_id: plan.ledgerCommentId, body: ledgerWith(runUrl) })).data
+              : (await github.rest.issues.createComment({ ...repo, issue_number: context.issue.number, body: ledgerWith(runUrl) })).data;
 
             const runBody = read('run-comment.md').split('{{LEDGER_URL}}').join(ledger.html_url);
-            await github.rest.issues.createComment({ ...repo, issue_number: context.issue.number, body: runBody });
+            const runComment = (await github.rest.issues.createComment({ ...repo, issue_number: context.issue.number, body: runBody })).data;
+            await github.rest.issues.updateComment({ ...repo, comment_id: ledger.id, body: ledgerWith(runComment.html_url) });
 
             for (const id of plan.minimize) {
               try {

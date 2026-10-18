@@ -16,6 +16,8 @@ import {
   renderLedger,
   renderRunComment,
   rowFromReport,
+  RUN_COMMENT_URL_PLACEHOLDER,
+  runCommentUrls,
   testChanges,
   updateLedger,
 } from "./lib/ledger.ts";
@@ -98,7 +100,11 @@ function main(): void {
   const onBranch = new Set(commits.map((c) => c.sha));
 
   mkdirSync(a["out-dir"]!, { recursive: true });
-  writeFileSync(join(a["out-dir"]!, "ledger.md"), renderLedger(ledger, onBranch));
+  // Earlier rows link to their report comments; this run's comment is posted after the ledger,
+  // so its link is a placeholder the publish step fills in.
+  const commentUrls = runCommentUrls(existing.runs);
+  commentUrls.set(current.runUrl!, RUN_COMMENT_URL_PLACEHOLDER);
+  writeFileSync(join(a["out-dir"]!, "ledger.md"), renderLedger(ledger, onBranch, commentUrls));
   writeFileSync(join(a["out-dir"]!, "run-comment.md"), renderRunComment(report, current, ledger.rows.length));
   // The legacy comment is adopted as the ledger (it is the PR's first agent comment, so it keeps
   // its place at the top); every earlier run comment gets hidden as outdated.
