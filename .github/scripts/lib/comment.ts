@@ -56,9 +56,21 @@ export function renderComment(report: Report): string {
     return parts.join("\n");
   }
 
+  if (report.problems?.length) {
+    parts.push("> ❌ **Agent run incomplete — do not read the sections below as a pass:**");
+    for (const p of report.problems) parts.push(`> - ${p}`);
+    parts.push("");
+  }
+  if (report.warnings?.length) {
+    parts.push("> ⚠️ **Warnings:**");
+    for (const w of report.warnings) parts.push(`> - ${w}`);
+    parts.push("");
+  }
+
   parts.push("### Decisions", "");
   if (report.decisions.length === 0) {
-    parts.push("_No Terraform changes required test updates._", "");
+    const empty = report.problems?.length ? "_No decisions recorded._" : "_No Terraform changes required test updates._";
+    parts.push(empty, "");
   } else {
     for (const d of report.decisions) {
       const skills = d.skillsUsed?.length ? ` _(skills: ${d.skillsUsed.join(", ")})_` : "";
