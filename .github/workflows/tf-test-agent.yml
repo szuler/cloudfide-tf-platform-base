@@ -21,7 +21,9 @@ permissions:
 jobs:
   tf-test-agent:
     name: Terraform Test Agent
-    runs-on: ubuntu-latest
+    # Pinned: `ubuntu-latest` moves to a new Ubuntu release on GitHub's schedule, which would
+    # change the toolchain under the agent without a commit here.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Never run for forks — they have no access to repository secrets.
     if: github.event.pull_request.head.repo.full_name == github.repository
@@ -149,6 +151,21 @@ jobs:
         if: always() && steps.agent.outputs.execution_file != ''
         run: cp "${{ steps.agent.outputs.execution_file }}" /tmp/author-execution.json
 
+      # Snapshot the tree after the author (through a scratch index; the real index and
+      # working tree are untouched). It decides the critic's mode: tests should change because
+      # the code changed, so the critic may only edit when the author changed tests in this
+      # run. It also lets the report say which pass changed each test file.
+      - name: Snapshot after author
+        id: author-snapshot
+        if: steps.detect.outputs.target_count != '0' && steps.agent.outcome == 'success'
+        run: |
+          TREE=$(node --experimental-strip-types .github/scripts/test-snapshot.ts tree)
+          CHANGED=$(node --experimental-strip-types .github/scripts/test-snapshot.ts changed HEAD "$TREE")
+          echo "tree=$TREE" >> "$GITHUB_OUTPUT"
+          if [ "$CHANGED" = "true" ]; then MODE=edit; else MODE=review-only; fi
+          echo "critic_mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Author changed tests: $CHANGED → critic mode: $MODE"
+
       # ── pass 2: critic — independent test review ─────────────────────────────
       #
       # A separate, fresh-context invocation reviews the tests the author just wrote.
@@ -182,19 +199,48 @@ jobs:
               ${{ steps.detect.outputs.target_dirs }}
             You did NOT write these tests. Your job is to try to reject each assertion.
 
+            Mode for this run: ${{ steps.author-snapshot.outputs.critic_mode }}
+            (decided by the workflow from git — do not re-derive it).
+              - edit: the author created or changed tests in this run. Apply your
+                `strengthen` and `drop` edits directly to the test files, set
+                `applied: true` on those verdicts, and after any edit verify the module still
+                passes `terraform test`.
+              - review-only: the author changed no tests in this run. Do NOT modify any test
+                file. Still record a verdict for every `run`; for `strengthen` or `drop`, set
+                `applied: false` and say in `reason` exactly what you would change, so a
+                person can decide. Tests should change because the code changed, not because
+                a new commit was pushed. Any test edit you make in this mode is undone.
+
             For each test file in the changed modules' `tests/` directory:
               - Apply the reject-each-assertion checklist from the skill.
               - Record a verdict (keep / strengthen / drop) for every `run`.
-              - Apply `strengthen` and `drop` edits directly to the test files.
-              - After any edit, verify the module still passes `terraform test`.
 
             Update the existing report at `.github/tf-test-agent-report.json` by adding a
             `testReview` array with your verdicts (schema in the skill definition).
 
             You are a critic, not a co-author — independence is the point. Do not
-            justify tests; try to break them. Only test files may be modified.
+            justify tests; try to break them. Only test files may be modified, and only in
+            edit mode.
 
       # ── deterministic post-checks ─────────────────────────────────────────────
+
+      # The critic's mode is enforced, not just requested: in review-only mode, put every
+      # test file the critic touched back to the author's snapshot and say so in the report.
+      # Non-test edits are left for the scope guard to fail on.
+      - name: Enforce the critic's review-only mode
+        if: >-
+          steps.author-snapshot.outputs.critic_mode == 'review-only' &&
+          steps.critic.outcome != 'skipped'
+        env:
+          AUTHOR_TREE: ${{ steps.author-snapshot.outputs.tree }}
+        run: |
+          NOW=$(node --experimental-strip-types .github/scripts/test-snapshot.ts tree)
+          RESTORED=$(node --experimental-strip-types .github/scripts/test-snapshot.ts restore "$AUTHOR_TREE" "$NOW")
+          if [ -n "$RESTORED" ]; then
+            MSG="critic pass: edited tests in review-only mode; the edits were undone: $(echo $RESTORED | tr '\n' ' ')"
+            echo "::warning::$MSG"
+            echo "$MSG" >> /tmp/run-warnings.txt
+          fi
 
       # claude-code-action treats agent config from the PR head as untrusted and, before
       # each pass, overwrites it with the base branch's copy. So any PR that touches
@@ -315,6 +361,7 @@ jobs:
             author=/tmp/author-execution.json \
             critic="${{ steps.critic.outputs.execution_file }}" \
             mutations=/tmp/mutation-results.json \
+            warnings=/tmp/run-warnings.txt \
             > /tmp/merged-report.json || rc=$?
           cp /tmp/merged-report.json .github/tf-test-agent-report.json
           exit $rc
@@ -378,6 +425,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --agent-commit "${{ steps.commit.outputs.sha }}" \
+            --author-tree "${{ steps.author-snapshot.outputs.tree }}" \
             --out-dir /tmp/pr-comments
 
       # Bodies are read from files, never interpolated into the script, so report text

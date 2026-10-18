@@ -9,9 +9,10 @@ export interface ExecResult {
 }
 
 /** Run a command without a shell (no shell interpolation -> no shell injection). */
-export function run(cmd: string, args: string[], cwd: string): ExecResult {
+export function run(cmd: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): ExecResult {
   const r = spawnSync(cmd, args, {
     cwd,
+    env: env ? { ...process.env, ...env } : process.env,
     encoding: "utf8",
     shell: false,
     maxBuffer: 32 * 1024 * 1024,

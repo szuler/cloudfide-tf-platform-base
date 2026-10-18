@@ -1,9 +1,10 @@
 // CLI: merge the agent report with authoritative test results into the final Report, and
 // exit non-zero if the agent run did not do its job (missing report or decisions).
 // Usage: node scripts/merge-report.ts <agent-report.json> <test-results.json> <changed-targets.json> \
-//          [<pass>=<execution-file> ...] [mutations=<mutation-results.json>] > report.json
+//          [<pass>=<execution-file> ...] [mutations=<mutation-results.json>] \
+//          [warnings=<file, one warning per line>] > report.json
 // Missing/unreadable inputs are treated as "not produced" — that is exactly what we check for.
-// Mutation results are optional and informational: a missing file just omits the section.
+// Mutation results and step warnings are optional: a missing file just adds nothing.
 import { readFileSync } from "node:fs";
 import { countPermissionDenials, mergeReport } from "./lib/merge.ts";
 import type { AgentReport, DetectResult, ModuleTestResult, MutationReport } from "./lib/types.ts";
@@ -14,6 +15,14 @@ function readJson(path: string | undefined): unknown {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return null;
+  }
+}
+
+function readLines(path: string): string[] {
+  try {
+    return readFileSync(path, "utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -28,12 +37,15 @@ function main(): void {
   const detect = readJson(targetsPath) as DetectResult | null;
   const denials: Record<string, number> = {};
   let mutations: MutationReport[] | undefined;
+  const notes: string[] = [];
   for (const arg of execArgs) {
     const [key, file] = arg.split("=", 2);
     if (!key || !file) continue;
     if (key === "mutations") {
       const m = readJson(file);
       if (Array.isArray(m)) mutations = m as MutationReport[];
+    } else if (key === "warnings") {
+      notes.push(...readLines(file));
     } else {
       denials[key] = countPermissionDenials(readJson(file));
     }
@@ -45,6 +57,7 @@ function main(): void {
     targets: detect?.targets ?? [],
     denials,
     mutations,
+    notes,
   });
 
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

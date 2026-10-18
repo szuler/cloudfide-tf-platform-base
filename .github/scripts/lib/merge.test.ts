@@ -75,3 +75,9 @@ test("countPermissionDenials tolerates unknown shapes (edge)", () => {
   assert.equal(countPermissionDenials({ type: "result" }), 0);
   assert.equal(countPermissionDenials("garbage"), 0);
 });
+
+test("step warnings are carried into the report as warnings, not problems", () => {
+  const r = mergeReport({ agent, results: [], targets: [{ dir: "modules/network", isNew: false }], denials: {}, notes: ["critic pass: edits undone"] });
+  assert.equal(r.problems, undefined);
+  assert.deepEqual(r.warnings, ["critic pass: edits undone"]);
+});
