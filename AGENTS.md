@@ -30,6 +30,11 @@ On a pull request that changes Terraform, the agent:
 3. Runs the tests and, on failure, decides whether the **test** or the **code** is at fault.
 4. Reports its decisions, the test results, and any reviewer findings in the pull request.
 
+On demand, an **audit** run (`.github/workflows/tf-test-audit.yml`) reviews an existing module's
+test suite. It builds the coverage matrix, critiques the existing tests and proposes new ones.
+The proposals become a patch for a person to review: nothing is committed and no pull request is
+opened.
+
 Think of the agent as a colleague who helps the team *trust* the infrastructure code, not
 just exercise it. When it spots something a reviewer should know, it says so.
 

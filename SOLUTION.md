@@ -91,7 +91,7 @@ flowchart LR
   - it reports blocked tool calls as warnings;
   - it overrides the agent's labels with git facts (new vs existing module, "agent reported
     'created', git shows no test changes").
-- *Cost:* about 2,000 lines of TypeScript plus 1,100 lines of tests (`.github/scripts`, 95 unit
+- *Cost:* about 2,200 lines of TypeScript plus 1,150 lines of tests (`.github/scripts`, 100 unit
   tests, zero runtime dependencies, Node 24 runs TypeScript natively). That's more code to
   maintain than a prompt-only solution.
 
@@ -173,13 +173,29 @@ flowchart LR
 One run per PR (a new push cancels the one in progress) takes about 5–7 minutes. The agent's
 own commit carries `[skip ci]`, so it doesn't start another run.
 
+**Auditing an existing test suite** (`.github/workflows/tf-test-audit.yml`):
+```sh
+gh workflow run tf-test-audit.yml -f module=modules/storage-account
+```
+The PR workflow only reviews modules a PR changes, so the original suites would never be looked
+at again. The audit fills that gap on demand:
+1. The agent builds the module's coverage matrix (`tf-coverage-matrix`), reviews every existing
+   test as a critic, writes tests for the gaps, and reviews the whole module for risk.
+2. **Nothing is committed and no PR is opened.** The token is read-only (`contents: read`).
+3. The workflow runs the scope guard and the tests on the proposals. It measures the **mutation
+   score before and after**, so a proposal that weakens the suite shows up as a regression.
+4. It publishes `proposal.patch` in the `tf-test-audit` artifact, with a summary in the job
+   summary.
+5. A person applies the patch on a branch (`git apply proposal.patch`) and opens a PR if they
+   agree. The PR workflow then runs on it as usual.
+
 **Debugging a run:** `gh variable set TF_AGENT_DEBUG --body true` adds the author's full
 transcript to the Actions log. `gh variable delete TF_AGENT_DEBUG` turns it off again. Keep it
 off in a public repository except while debugging.
 
 **Locally**
 ```sh
-cd .github/scripts && npm ci && npm test        # 95 unit tests, plus `npm run typecheck`
+cd .github/scripts && npm ci && npm test        # 100 unit tests, plus `npm run typecheck`
 cd modules/<name> && terraform init -backend=false && terraform test
 # mutation-check a module's suite (TERRAFORM_BIN is honoured):
 node --experimental-strip-types .github/scripts/mutation-check.ts modules/<name>
@@ -282,8 +298,9 @@ How to read it:
 - **The three original suites were never touched by the agent.** It reviews only the modules a
   PR changes. Their survivors are real gaps. For example, nothing would notice if
   `storage-account` re-enabled shared-key access.
-- **Reviewing existing suites needs a separate run:** a periodic audit that proposes tests
-  without committing them (see [Production](#what-would-change-for-a-production-version)).
+- **Existing suites are reviewed by a separate, manual audit run** (see
+  [How to run it](#how-to-run-it)). It proposes tests as a patch and measures them by mutation
+  score before vs after, without committing anything.
 
 ## What the generated tests can and cannot show
 
@@ -345,6 +362,9 @@ level.
   hard-coded, non-security `is_manual_connection = false`.
 - **The critic** reviews only the changed modules' tests, and only when the author pass
   succeeded.
+- **The audit is manual and runs one module at a time.** It has no critic pass: its independent
+  check is the deterministic mutation score before vs after, plus the person who decides whether
+  to apply the patch. Running it on a schedule for every module is the obvious next step.
 - **Changes to the agent or skills take effect only after merge to the base branch.** That's
   deliberate, but it means a skill change can't be tested on the PR that makes it.
 - **Terraform 1.16.6 crashes when an assertion on a diagnostic setting's `enabled_log` fails**
