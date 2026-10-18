@@ -8,7 +8,7 @@ resource "azurerm_databricks_workspace" "this" {
   public_network_access_enabled = var.public_network_access_enabled
 
   custom_parameters {
-    no_public_ip = true
+    no_public_ip = var.no_public_ip
   }
 
   tags = var.tags
