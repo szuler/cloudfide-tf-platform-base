@@ -255,6 +255,36 @@ shows all seven runs:
 **$0.75–0.77** on PR #11 (a bigger module, a 12-run suite). Each pass takes about 2 minutes, the
 whole job 4.7–7 minutes. Figures are from `total_cost_usd` in the runs' logs.
 
+## Test coverage: at the start and now
+
+`terraform test` has no built-in coverage metric, so the table shows two things for each module:
+- how many test runs it has, at the start (commit `95d7168`) and now;
+- its mutation score.
+
+Each mutation score is `mutation-check.ts` run locally across the **whole module**, so the
+modules can be compared.
+
+| Module | At the start | Now | Where the tests are | Mutations caught | Survivors (what no test checks) |
+| --- | --- | --- | --- | --- | --- |
+| `data-factory` | — | 6 runs | open PR [#5](https://github.com/szuler/cloudfide-tf-platform-base/pull/5) | 3/4 | default `public_network_enabled = true` |
+| `databricks-workspace` | — | 7 runs | main (via PR [#3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3)) | 2/2 | — |
+| `function-app` | — | 11 runs | open PR [#11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11) | 2/2 | — |
+| `key-vault` | 2 runs | 2 runs | main (original) | 2/4 | default network action `Deny`; role `principal_id` values (only counted) |
+| `log-analytics-workspace` | — | 3 runs | main (added during development, before the PR workflow existed) | not checked | — |
+| `network` | 3 runs | 3 runs | main (original) | 1/1 | — |
+| `private-endpoint` | — | 7 runs | main (via PR [#13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13)) | not checked | — |
+| `storage-account` | 3 runs | 3 runs | main (original) | 4/7 | `shared_access_key_enabled = false`, `https_traffic_only_enabled = true`, a `false` default |
+| `stacks/data-platform` | — | — | — | — | not tested |
+
+How to read it:
+- **"Not checked" means no mutation pattern applied**, not that the tests are perfect. The
+  mutation set is a few regexes, so a small score like 2/2 is a weak signal.
+- **The three original suites were never touched by the agent.** It reviews only the modules a
+  PR changes. Their survivors are real gaps. For example, nothing would notice if
+  `storage-account` re-enabled shared-key access.
+- **Reviewing existing suites needs a separate run:** a periodic audit that proposes tests
+  without committing them (see [Production](#what-would-change-for-a-production-version)).
+
 ## What the generated tests can and cannot show
 
 The tests run `terraform test` with `command = plan` against mocked providers.
