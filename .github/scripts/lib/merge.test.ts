@@ -81,3 +81,41 @@ test("step warnings are carried into the report as warnings, not problems", () =
   assert.equal(r.problems, undefined);
   assert.deepEqual(r.warnings, ["critic pass: edits undone"]);
 });
+
+test("a decision claiming test changes git does not show is corrected, the claim kept", () => {
+  const claims: AgentReport = {
+    decisions: [
+      { target: "modules/network", action: "created", reason: "r" },
+      { target: "modules/key-vault", action: "updated", reason: "r" },
+    ],
+  };
+  const r = mergeReport({
+    agent: claims,
+    results: [],
+    targets: [{ dir: "modules/network" }, { dir: "modules/key-vault" }],
+    denials: {},
+    authorTestChanges: ["modules/key-vault/tests/main.tftest.hcl"],
+  });
+  assert.equal(r.decisions[0]?.action, "skipped");
+  assert.equal(r.decisions[0]?.reportedAction, "created");
+  assert.equal(r.decisions[1]?.action, "updated");
+  assert.equal(r.decisions[1]?.reportedAction, undefined);
+});
+
+test("unknown author changes (no snapshot) leave decisions as reported (negative)", () => {
+  const r = mergeReport({ agent, results: [], targets: [{ dir: "modules/network" }], denials: {} });
+  assert.equal(r.decisions[0]?.action, "updated");
+  const empty = mergeReport({ agent, results: [], targets: [{ dir: "modules/network" }], denials: {}, authorTestChanges: [] });
+  assert.equal(empty.decisions[0]?.action, "skipped");
+});
+
+test("a target prefix does not match a sibling module (edge)", () => {
+  const r = mergeReport({
+    agent: { decisions: [{ target: "modules/net", action: "updated", reason: "r" }] },
+    results: [],
+    targets: [{ dir: "modules/net" }],
+    denials: {},
+    authorTestChanges: ["modules/network/tests/main.tftest.hcl"],
+  });
+  assert.equal(r.decisions[0]?.action, "skipped");
+});

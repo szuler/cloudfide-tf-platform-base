@@ -2,7 +2,8 @@
 // exit non-zero if the agent run did not do its job (missing report or decisions).
 // Usage: node scripts/merge-report.ts <agent-report.json> <test-results.json> <changed-targets.json> \
 //          [<pass>=<execution-file> ...] [mutations=<mutation-results.json>] \
-//          [warnings=<file, one warning per line>] > report.json
+//          [warnings=<file, one warning per line>] \
+//          [author-changes=<file, one test path per line>] > report.json
 // Missing/unreadable inputs are treated as "not produced" — that is exactly what we check for.
 // Mutation results and step warnings are optional: a missing file just adds nothing.
 import { readFileSync } from "node:fs";
@@ -18,11 +19,12 @@ function readJson(path: string | undefined): unknown {
   }
 }
 
-function readLines(path: string): string[] {
+/** Non-empty lines of a file, or undefined if it cannot be read. */
+function readLines(path: string): string[] | undefined {
   try {
     return readFileSync(path, "utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   } catch {
-    return [];
+    return undefined;
   }
 }
 
@@ -38,6 +40,8 @@ function main(): void {
   const denials: Record<string, number> = {};
   let mutations: MutationReport[] | undefined;
   const notes: string[] = [];
+  // Missing file = the author snapshot never ran, so nothing is known; empty = no changes.
+  let authorTestChanges: string[] | undefined;
   for (const arg of execArgs) {
     const [key, file] = arg.split("=", 2);
     if (!key || !file) continue;
@@ -45,7 +49,9 @@ function main(): void {
       const m = readJson(file);
       if (Array.isArray(m)) mutations = m as MutationReport[];
     } else if (key === "warnings") {
-      notes.push(...readLines(file));
+      notes.push(...(readLines(file) ?? []));
+    } else if (key === "author-changes") {
+      authorTestChanges = readLines(file);
     } else {
       denials[key] = countPermissionDenials(readJson(file));
     }
@@ -58,6 +64,7 @@ function main(): void {
     denials,
     mutations,
     notes,
+    authorTestChanges,
   });
 
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

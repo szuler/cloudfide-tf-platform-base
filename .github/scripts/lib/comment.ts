@@ -152,7 +152,10 @@ export function renderReportBody(report: Report): string {
     for (const d of report.decisions) {
       const skills = d.skillsUsed?.length ? ` _(skills: ${d.skillsUsed.join(", ")})_` : "";
       const kind = d.targetIsNew === undefined ? "" : d.targetIsNew ? " _(new in this PR)_" : " _(existing)_";
-      parts.push(`- **${d.target}**${kind} — ${ACTION_LABEL[d.action]}: ${d.reason}${skills}`);
+      const action = d.reportedAction
+        ? `no test changes in this run _(the agent reported “${ACTION_LABEL[d.reportedAction]}”)_`
+        : ACTION_LABEL[d.action];
+      parts.push(`- **${d.target}**${kind} — ${action}: ${d.reason}${skills}`);
     }
     parts.push("");
   }
