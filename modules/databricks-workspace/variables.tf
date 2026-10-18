@@ -30,6 +30,12 @@ variable "public_network_access_enabled" {
   default     = true
 }
 
+variable "no_public_ip" {
+  description = "Disable public IP addresses on Databricks cluster nodes. Keep true unless the managed VNet is routed to prevent direct internet access by another means."
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Tags for all resources."
   type        = map(string)
