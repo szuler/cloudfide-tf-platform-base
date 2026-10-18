@@ -60,6 +60,14 @@ flowchart LR
    - posts one **permanent summary comment** (one row per run, never hidden) and one **comment
      per run** (older ones hidden as outdated);
    - uploads the full report as an artifact.
+9. **Metrics** (`run-metrics.ts`): one `metrics.json` per run in the artifact, plus a table in
+   the job summary.
+   - **cost:** USD and tokens per pass, and the share of input tokens served from the cache;
+   - **performance:** time, turns, and why each pass ended (e.g. `api_error`);
+   - **quality signals:** tests, mutation headline score, critic verdicts, labels git had to
+     correct, findings by severity and confidence, blocked tool calls.
+
+   It's informational, built only from data the run already has.
 
 ## Main decisions — and what they cost
 
@@ -83,7 +91,7 @@ flowchart LR
   - it reports blocked tool calls as warnings;
   - it overrides the agent's labels with git facts (new vs existing module, "agent reported
     'created', git shows no test changes").
-- *Cost:* about 1,800 lines of TypeScript plus 1,000 lines of tests (`.github/scripts`, 91 unit
+- *Cost:* about 2,000 lines of TypeScript plus 1,100 lines of tests (`.github/scripts`, 95 unit
   tests, zero runtime dependencies, Node 24 runs TypeScript natively). That's more code to
   maintain than a prompt-only solution.
 
@@ -169,7 +177,7 @@ off in a public repository except while debugging.
 
 **Locally**
 ```sh
-cd .github/scripts && npm ci && npm test        # 91 unit tests, plus `npm run typecheck`
+cd .github/scripts && npm ci && npm test        # 95 unit tests, plus `npm run typecheck`
 cd modules/<name> && terraform init -backend=false && terraform test
 # mutation-check a module's suite (TERRAFORM_BIN is honoured):
 node --experimental-strip-types .github/scripts/mutation-check.ts modules/<name>
@@ -402,11 +410,33 @@ level.
      allows test files.
    - Each of these needs **verifying against the action's actual permission behaviour**, the
      same way the first permission bug was found: by running it, not by reading the docs.
-7. **Wider scope:**
+7. **Telemetry beyond the per-run record.** Each run already writes `metrics.json`. The next
+   steps:
+   - **Trends without a new service:** a scheduled workflow downloads the runs' artifacts
+     through the API and reports, for example weekly:
+     - cost per run and per module;
+     - mutation scores over time;
+     - how often git corrects the agent;
+     - failure reasons (API limits, `max-turns`).
+
+     Artifacts expire after 90 days, so the summary should be stored, not just re-derived.
+   - **OpenTelemetry from Claude Code:** `CLAUDE_CODE_ENABLE_TELEMETRY=1` with an OTLP exporter.
+     - It emits metrics (`claude_code.cost.usage`, `claude_code.token.usage`), events (tool
+       decisions and results, API errors, skills activated) and, in beta, traces.
+     - The docs cover headless (`-p`) mode. Whether the variables reach the CLI inside
+       `claude-code-action` still has to be verified.
+     - It needs a collector, a secret for it and an egress exception. Prompt and tool content
+       stay unlogged, for the same reason the transcript is off.
+   - **Measure quality directly, not only through proxies:**
+     - a set of "golden" PRs with known correct outcomes (the PR #5 and PR #11 cases), re-run
+       on every skill change;
+     - reviewer feedback: 👍/👎 reactions on findings, read through the API, give a precision
+       figure for findings that no gate can produce today.
+8. **Wider scope:**
    - the critic over all of a changed module's tests;
    - stack-level tests and a cross-module review (the private-DNS case);
    - apply-level tests in a sandbox subscription before release.
-8. **Run the same contract on GitHub Copilot as well**, if that's the team's platform, to avoid
+9. **Run the same contract on GitHub Copilot as well**, if that's the team's platform, to avoid
    depending on one vendor (the thin adapter is already there, untested).
 
 ## How the LLM was controlled and verified
