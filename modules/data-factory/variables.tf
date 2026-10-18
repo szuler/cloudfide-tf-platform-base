@@ -1,10 +1,10 @@
 variable "name" {
-  description = "Data factory name."
+  description = "Name of the data factory."
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "Resource group that holds the factory."
+  description = "Resource group that holds the data factory."
   type        = string
 }
 
@@ -14,14 +14,25 @@ variable "location" {
 }
 
 variable "public_network_enabled" {
-  description = "Allow access to the factory from the public internet."
+  description = "Allow access to the data factory from the public internet."
   type        = bool
   default     = true
 }
 
 variable "log_analytics_workspace_id" {
-  description = "Workspace that receives the factory's diagnostic logs."
+  description = "Log Analytics workspace that receives the factory's diagnostic logs."
   type        = string
+}
+
+variable "diagnostic_log_categories" {
+  description = "Diagnostic log categories the factory sends to the Log Analytics workspace."
+  type        = set(string)
+  default     = ["ActivityRuns", "PipelineRuns"]
+
+  validation {
+    condition     = length(var.diagnostic_log_categories) > 0
+    error_message = "At least one diagnostic log category must be enabled."
+  }
 }
 
 variable "linked_storage_accounts" {
