@@ -87,6 +87,81 @@ test("decision shows git's new/existing fact and labels the action as about test
   assert.ok(fresh.includes("_(new in this PR)_"));
 });
 
+test("mutation check lists survivors and does not count invalid mutants", () => {
+  const md = renderComment({
+    ...baseReport,
+    mutations: [
+      {
+        dir: "modules/data-factory",
+        results: [
+          { name: "dynamic-value-corrupt", file: "main.tf", outcome: "survived", hint: "counts, not values" },
+          { name: "validation-disabled", file: "variables.tf", outcome: "caught", hint: "h" },
+          { name: "count-flip", file: "main.tf", outcome: "invalid", hint: "h" },
+        ],
+      },
+      { dir: "modules/network", results: [], note: "no applicable mutation — not checked" },
+    ],
+  });
+  assert.ok(md.includes("### Mutation check (informational)"));
+  assert.ok(md.includes("`modules/data-factory` — whole module: 1/2 caught, 1 invalid mutant(s) ignored"));
+  assert.ok(md.includes("survived `dynamic-value-corrupt` (`main.tf`) — counts, not values"));
+  assert.ok(md.includes("`modules/network`: no applicable mutation — not checked"));
+});
+
+test("a suite created in the PR is judged whole, with no 'rest of module' part", () => {
+  const md = renderComment({
+    ...baseReport,
+    mutations: [
+      {
+        dir: "modules/data-factory",
+        scope: "suite-created",
+        results: [
+          { name: "each-value-corrupt", file: "main.tf", line: 20, inChange: false, outcome: "survived", hint: "h" },
+          { name: "validation-disabled", file: "variables.tf", line: 33, inChange: true, outcome: "caught", hint: "h" },
+        ],
+      },
+    ],
+  });
+  assert.ok(md.includes("— tests created in this PR (the whole suite is new, so every mutant judges it): 1/2 caught"));
+  assert.ok(md.includes("survived `each-value-corrupt` (`main.tf:20`)"));
+  assert.ok(!md.includes("Rest of the module"));
+});
+
+test("an existing suite: changed code is the headline, the rest is collapsed", () => {
+  const md = renderComment({
+    ...baseReport,
+    mutations: [
+      {
+        dir: "modules/data-factory",
+        scope: "change",
+        results: [
+          { name: "dynamic-value-corrupt", file: "main.tf", line: 33, inChange: true, outcome: "survived", hint: "h" },
+          { name: "bool-default-off", file: "variables.tf", line: 19, inChange: false, outcome: "survived", hint: "h" },
+          { name: "count-flip", file: "main.tf", line: 5, inChange: false, outcome: "caught", hint: "h" },
+        ],
+      },
+    ],
+  });
+  assert.ok(md.includes("— code changed in this PR: 0/1 caught"));
+  assert.ok(md.includes("<details><summary>Rest of the module (pre-existing tests): 1/2 caught</summary>"));
+  const headline = md.slice(0, md.indexOf("<details>"));
+  assert.ok(headline.includes("`dynamic-value-corrupt`") && !headline.includes("`bool-default-off`"));
+});
+
+test("an existing suite with no mutant on the changed lines says so (edge)", () => {
+  const md = renderComment({
+    ...baseReport,
+    mutations: [
+      { dir: "modules/x", scope: "change", results: [{ name: "count-flip", file: "main.tf", inChange: false, outcome: "caught", hint: "h" }] },
+    ],
+  });
+  assert.ok(md.includes("`modules/x` — code changed in this PR: no mutation applies to the changed lines"));
+});
+
+test("no mutation section when the check did not run", () => {
+  assert.ok(!renderComment(baseReport).includes("Mutation check"));
+});
+
 test("no findings renders a placeholder", () => {
   const md = renderComment({ ...baseReport, findings: [] });
   assert.ok(md.includes("No findings"));

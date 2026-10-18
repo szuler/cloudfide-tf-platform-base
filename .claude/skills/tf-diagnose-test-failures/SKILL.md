@@ -43,6 +43,16 @@ finding over silently weakening the test.
 - **Validation test shape:** `expect_failures = [var.<name>]` must name the variable whose
   `validation` block should trip; don't also add an `assert` for the same run.
 
+## "TERRAFORM CRASH" right after a run reported `fail`
+
+Seen on Terraform 1.16.6 with azurerm 4.81.0: when an assertion that references
+`azurerm_monitor_diagnostic_setting.<name>.enabled_log` **fails**, Terraform prints
+`run "<name>"... fail` and then crashes with `panic: ... value has marks, so it cannot be
+serialized as JSON` while rendering the failure. That is a Terraform bug in reporting, not a
+broken test: the assertion was evaluated and it **failed**. Diagnose it like any failed
+assertion (test fault vs code fault) — do not drop or rewrite a value assertion because of the
+crash. If the assertion is right, the code is wrong; say so in the finding and mention the crash.
+
 ## Never do
 
 - Do not edit module code, defaults, or validations to turn a failure green.

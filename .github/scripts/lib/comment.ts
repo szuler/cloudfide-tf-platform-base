@@ -1,5 +1,16 @@
 // Pure logic: render the single sticky PR comment (and job summary) markdown.
-import type { AgentDecision, Finding, ModuleTestResult, Report, Severity, TestReviewVote } from "./types.ts";
+import { headlineResults, restResults, score } from "./mutate.ts";
+import type {
+  AgentDecision,
+  Finding,
+  ModuleTestResult,
+  MutationReport,
+  MutationResult,
+  MutationScope,
+  Report,
+  Severity,
+  TestReviewVote,
+} from "./types.ts";
 
 /** Hidden marker so the workflow can find-and-update one comment instead of spamming. */
 export const COMMENT_MARKER = "<!-- tf-test-agent -->";
@@ -42,6 +53,58 @@ function renderTestReview(votes: TestReviewVote[]): string {
     .join("\n");
 }
 
+function renderMutations(reports: MutationReport[]): string {
+  const out = [
+    "_Each mutation plants one small bug in a copy of the module; a good suite fails on it. " +
+      "A survivor is a signal for the reviewer, not a defect — some bugs cannot be seen at plan " +
+      "level with a mocked provider._",
+    "",
+  ];
+  for (const r of reports) {
+    if (r.note) {
+      out.push(`- \`${r.dir}\`: ${r.note}`);
+      continue;
+    }
+    const head = headlineResults(r);
+    const label = SCOPE_LABEL[r.scope ?? "module"];
+    if (r.scope === "change" && head.length === 0) {
+      out.push(`- \`${r.dir}\` — ${label}: no mutation applies to the changed lines`);
+    } else {
+      out.push(`- \`${r.dir}\` — ${label}: ${scoreLine(head)}`);
+      out.push(...survivorLines(head, "  "));
+    }
+    const rest = restResults(r);
+    if (rest.length) {
+      out.push(
+        "",
+        `  <details><summary>Rest of the module (pre-existing tests): ${scoreLine(rest)}</summary>`,
+        "",
+        ...survivorLines(rest, "  "),
+        "",
+        "  </details>",
+      );
+    }
+  }
+  return out.join("\n");
+}
+
+const SCOPE_LABEL: Record<MutationScope, string> = {
+  "suite-created": "tests created in this PR (the whole suite is new, so every mutant judges it)",
+  change: "code changed in this PR",
+  module: "whole module",
+};
+
+function scoreLine(results: MutationResult[]): string {
+  const s = score(results);
+  return `${s.caught}/${s.scored} caught${s.invalid ? `, ${s.invalid} invalid mutant(s) ignored` : ""}`;
+}
+
+function survivorLines(results: MutationResult[], indent: string): string[] {
+  return results
+    .filter((x) => x.outcome === "survived")
+    .map((s) => `${indent}- ⚠️ survived \`${s.name}\` (\`${s.file}${s.line ? `:${s.line}` : ""}\`) — ${s.hint}`);
+}
+
 function renderFindings(findings: Finding[]): string {
   if (findings.length === 0) return "_No findings._";
   const sorted = [...findings].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
@@ -56,7 +119,12 @@ function renderFindings(findings: Finding[]): string {
 }
 
 export function renderComment(report: Report): string {
-  const parts: string[] = [COMMENT_MARKER, "## 🧪 Terraform Test Agent", ""];
+  return [COMMENT_MARKER, "## 🧪 Terraform Test Agent", "", renderReportBody(report)].join("\n");
+}
+
+/** The report sections without the marker and title, so the per-run comment can add its own. */
+export function renderReportBody(report: Report): string {
+  const parts: string[] = [];
 
   if (report.notRun) {
     parts.push(`> ⚠️ **Agent did not run:** ${report.notRun}`, "");
@@ -93,6 +161,10 @@ export function renderComment(report: Report): string {
 
   if (report.testReview !== undefined) {
     parts.push("### Independent test review", "", renderTestReview(report.testReview), "");
+  }
+
+  if (report.mutations?.length) {
+    parts.push("### Mutation check (informational)", "", renderMutations(report.mutations), "");
   }
 
   parts.push("### Findings for the reviewer", "", renderFindings(report.findings), "");

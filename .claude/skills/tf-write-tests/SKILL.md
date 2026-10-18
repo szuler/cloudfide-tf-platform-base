@@ -49,6 +49,15 @@ run "descriptive_behaviour_name" {
 - **Outputs:** assert `output.<name>` where it encodes logic, not a pass-through.
 - **Resource counts:** for `for_each`/`count`, assert `length(resource.x) == N` for a given
   input map/set (this is meaningful behaviour, not a tautology).
+- **Values, not just counts:** when an input collection is mapped into resources or `dynamic`
+  blocks, a count alone stays green if every value is wrong. Also assert the values that come
+  from the input:
+  ```hcl
+  condition = toset([for l in azurerm_monitor_diagnostic_setting.this.enabled_log : l.category]) == toset(["TriggerRuns", "PipelineRuns"])
+  ```
+  Ask: would this test fail if each value were corrupted (`"${x}-mut"`) but the count stayed
+  the same? If not, add the value assertion. (When this particular assertion fails, Terraform
+  1.16.6 crashes while printing it — see `tf-diagnose-test-failures`; the assertion is fine.)
 - **Edge / negative cases:** empty collections, a single element, a toggle flipped.
 
 ## Mock `data "external"` so no script executes

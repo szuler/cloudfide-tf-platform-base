@@ -246,26 +246,57 @@ jobs:
       # and the PR reviewer must be able to see the test files to judge.
       # Commits via GITHUB_TOKEN do not trigger new workflow runs (loop prevention).
       - name: Commit and push test files
+        id: commit
         if: >-
           steps.detect.outputs.target_count != '0' &&
           steps.config-restore.outcome == 'success' &&
           steps.scope-guard.outcome == 'success'
         # Identity is set per command: claude-code-action configures its own git user
         # (claude[bot]) during the agent passes, which would override a job-level config.
-        # `[skip ci]` keeps the agent's own commit from creating another run of this
-        # workflow (GitHub skips pull_request runs whose HEAD commit carries it).
+        # The PR ledger finds the agent's commits by this email.
+        # The message body (run link + decisions) makes the commit a durable record, and its
+        # `[skip ci]` keeps the agent's own commit from creating another run of this workflow
+        # (GitHub skips pull_request runs whose HEAD commit carries it).
         run: |
           git add -- modules/ stacks/
           if git diff --cached --quiet; then
             echo "No test files changed; nothing to commit."
           else
+            node --experimental-strip-types .github/scripts/commit-message.ts \
+              .github/tf-test-agent-report.json \
+              "${{ github.event.pull_request.number }}" \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              > /tmp/commit-message.txt
             git -c user.name="Terraform Test Agent" \
                 -c user.email="tf-test-agent@users.noreply.github.com" \
-                commit \
-                -m "test: agent-generated and reviewed tests for PR #${{ github.event.pull_request.number }}" \
-                -m "[skip ci] The agent's own commit must not re-trigger the agent."
+                commit -F /tmp/commit-message.txt
             git push
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
+
+      # Mutation check of the final (critic-reviewed) suites: plant small bugs in copies of
+      # each module and see whether the tests notice. Deterministic evidence for the reviewer
+      # about test strength — informational only, never fails the job (a survivor can be
+      # undetectable at plan level). Mutants are built in copies under the OS temp dir, never
+      # in the checkout. Runs only on green suites, since mutating code whose tests already
+      # fail says nothing.
+      - name: Mutation check (informational)
+        id: mutation
+        if: >-
+          always() &&
+          steps.detect.outputs.target_count != '0' &&
+          steps.run-tests.outcome == 'success'
+        continue-on-error: true
+        run: |
+          DIRS=$(node -e "
+            const d = JSON.parse(require('fs').readFileSync('/tmp/changed-targets.json', 'utf8'));
+            process.stdout.write(d.targets.map(t => t.dir).join(' '));
+          ")
+          # --base gives each module its scope from git: a suite created in this PR is judged
+          # whole; an existing suite is judged on the lines this PR changed.
+          node --experimental-strip-types .github/scripts/mutation-check.ts \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --json /tmp/mutation-results.json $DIRS || true
 
       # ── reporting ─────────────────────────────────────────────────────────────
 
@@ -283,6 +314,7 @@ jobs:
             .github/tf-test-agent-report.json /tmp/test-results.json /tmp/changed-targets.json \
             author=/tmp/author-execution.json \
             critic="${{ steps.critic.outputs.execution_file }}" \
+            mutations=/tmp/mutation-results.json \
             > /tmp/merged-report.json || rc=$?
           cp /tmp/merged-report.json .github/tf-test-agent-report.json
           exit $rc
@@ -299,8 +331,7 @@ jobs:
             }, null, 2));
           "
 
-      - name: Format PR comment
-        id: format-comment
+      - name: Ensure a report exists
         if: always()
         run: |
           if [ ! -f .github/tf-test-agent-report.json ]; then
@@ -313,46 +344,92 @@ jobs:
               }, null, 2));
             "
           fi
-          {
-            echo 'comment<<AGENT_COMMENT_BODY'
-            node --experimental-strip-types .github/scripts/format-comment.ts \
-              .github/tf-test-agent-report.json comment
-            echo 'AGENT_COMMENT_BODY'
-          } >> "$GITHUB_OUTPUT"
 
-      # Pass the comment body via an env var to avoid backtick/template-literal injection
-      # when embedding the markdown in the github-script JS string.
-      - name: Post or update sticky PR comment
+      # Two kinds of PR comment (see .github/scripts/lib/ledger.ts): a permanent ledger with
+      # one row per run, never hidden, and a full report per run, the older ones hidden as
+      # outdated. Only the workflow bot's own comments are read, so nobody can plant a fake
+      # ledger by posting a comment with its marker. All pages are read, not just the first 30.
+      - name: Fetch existing agent comments
         if: always()
-        env:
-          COMMENT_BODY: ${{ steps.format-comment.outputs.comment }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const marker = '<!-- tf-test-agent -->';
-            const body = process.env.COMMENT_BODY;
-            const { data: comments } = await github.rest.issues.listComments({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
+              per_page: 100,
             });
-            const existing = comments.find(c => c.body && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
+            const own = comments
+              .filter(c => c.user && c.user.login === 'github-actions[bot]' && c.body)
+              .map(c => ({ id: c.id, node_id: c.node_id, html_url: c.html_url, body: c.body }));
+            require('fs').writeFileSync('/tmp/agent-comments.json', JSON.stringify(own));
+
+      - name: Render PR comments
+        id: render-comments
+        if: always()
+        run: |
+          node --experimental-strip-types .github/scripts/pr-comments.ts \
+            --report .github/tf-test-agent-report.json \
+            --comments /tmp/agent-comments.json \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --agent-commit "${{ steps.commit.outputs.sha }}" \
+            --out-dir /tmp/pr-comments
+
+      # Bodies are read from files, never interpolated into the script, so report text
+      # cannot inject JavaScript. Hiding old run comments is best-effort: if it is refused,
+      # they stay visible and the run warns; the ledger does not depend on it.
+      - name: Publish PR comments
+        if: always() && steps.render-comments.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const read = f => fs.readFileSync(`/tmp/pr-comments/${f}`, 'utf8');
+            const plan = JSON.parse(read('comment-plan.json'));
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+
+            const ledgerBody = read('ledger.md');
+            const ledger = plan.ledgerCommentId
+              ? (await github.rest.issues.updateComment({ ...repo, comment_id: plan.ledgerCommentId, body: ledgerBody })).data
+              : (await github.rest.issues.createComment({ ...repo, issue_number: context.issue.number, body: ledgerBody })).data;
+
+            const runBody = read('run-comment.md').split('{{LEDGER_URL}}').join(ledger.html_url);
+            await github.rest.issues.createComment({ ...repo, issue_number: context.issue.number, body: runBody });
+
+            for (const id of plan.minimize) {
+              try {
+                await github.graphql(
+                  'mutation($id: ID!) { minimizeComment(input: { subjectId: $id, classifier: OUTDATED }) { minimizedComment { isMinimized } } }',
+                  { id },
+                );
+              } catch (e) {
+                core.warning(`Could not hide an older agent comment as outdated: ${e.message}`);
+              }
             }
+
+      # The full machine-readable record of this run, kept with the run (repo retention: 90 days).
+      - name: Collect run report
+        if: always()
+        run: |
+          mkdir -p /tmp/tf-test-agent-artifact
+          for f in .github/tf-test-agent-report.json /tmp/test-results.json \
+                   /tmp/mutation-results.json /tmp/changed-targets.json; do
+            if [ -f "$f" ]; then cp "$f" /tmp/tf-test-agent-artifact/; fi
+          done
+
+      - name: Upload run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tf-test-agent-report
+          path: /tmp/tf-test-agent-artifact/
+          if-no-files-found: ignore
 
       - name: Write job summary
         if: always()

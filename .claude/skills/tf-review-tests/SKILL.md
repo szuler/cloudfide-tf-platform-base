@@ -34,6 +34,9 @@ Ask these in order; the first "yes" is a reason to strengthen or drop:
 2. **Would it still pass if the code were subtly wrong?** If a plausible wrong implementation
    (a swapped default, a dropped `var.` wiring, an off-by-one count) would leave this assertion
    green, the test is weak. A good assertion fails when the behaviour it names breaks.
+   - **Counts are not values.** If an input collection maps into `for_each` resources or
+     `dynamic` blocks and the test only checks `length(...)`, a bug that corrupts every value
+     but keeps the count passes. That is a `strengthen`: add an assertion on the values.
 3. **Does it assert something plan + mocks cannot know?** Computed / "known after apply" values
    (IDs, generated endpoints) are unknown under `command = plan` with a mocked provider. An
    assertion that appears to check one is either dead or secretly relying on a mock default —
@@ -53,6 +56,11 @@ test.
 Produce a verdict for each `run` (or assertion): **keep**, **strengthen**, or **drop**, each with
 a one-line reason. You may apply a `strengthen` or `drop` edit directly to the test file, but:
 
+- **Strengthen means: make the test catch a plausible bug in the behaviour it names.** Adding an
+  assertion that restates a hard-coded literal from `main.tf` (e.g. `use_managed_identity ==
+  true` when the code says `use_managed_identity = true`) is not strengthening — it is the
+  tautology from check 1. Only a security guard qualifies, and then its `error_message` and your
+  reason must say it is a regression guard, not behaviour coverage.
 - Record every change (what and why) so a human can see it — do not silently delete coverage.
 - Never weaken or drop an assertion that is catching a **real** code problem. If a test fails
   because the *code* is wrong, that is a finding (`tf-diagnose-test-failures` /
