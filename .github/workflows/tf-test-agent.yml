@@ -82,14 +82,6 @@ jobs:
 
       # ── configure git (used by the commit step later) ────────────────────────
 
-      - name: Configure git identity
-        if: steps.detect.outputs.target_count != '0'
-        run: |
-          # Use a recognisable agent identity so commits are distinguishable from
-          # human commits and from generic github-actions[bot] commits.
-          git config user.name "Terraform Test Agent"
-          git config user.email "tf-test-agent@users.noreply.github.com"
-
       # ── pass 1: author — write tests ─────────────────────────────────────────
 
       - name: Run Terraform Test Agent (author)
@@ -119,7 +111,9 @@ jobs:
             Tooling in this environment: use Read/Glob/Grep to inspect files and Write/Edit
             to create them (Write creates missing directories). Bash is limited to
             `terraform` and read-only `git` commands — run Terraform as
-            `terraform -chdir=<module-dir> <command>` (no `cd`, no `&&` chains).
+            `terraform -chdir=<module-dir> <command>` (no `cd`, no `&&` chains). The working
+            directory is already the repository root: run `git diff ...` directly, never
+            `git -C <path> ...` (that form is not permitted and will be blocked).
 
             The following Terraform module(s) changed in this PR (new vs existing is
             determined by git — do not re-derive it, and describe the change accordingly):
@@ -181,6 +175,7 @@ jobs:
 
             Tooling in this environment: Read/Glob/Grep/Write/Edit for files; Bash is limited
             to `terraform` and read-only `git` — run `terraform -chdir=<module-dir> test`.
+            The working directory is the repository root; never use `git -C <path>`.
 
             You are the independent critic. A separate agent (author pass) has just written
             or updated tests for these modules:
@@ -255,12 +250,20 @@ jobs:
           steps.detect.outputs.target_count != '0' &&
           steps.config-restore.outcome == 'success' &&
           steps.scope-guard.outcome == 'success'
+        # Identity is set per command: claude-code-action configures its own git user
+        # (claude[bot]) during the agent passes, which would override a job-level config.
+        # `[skip ci]` keeps the agent's own commit from creating another run of this
+        # workflow (GitHub skips pull_request runs whose HEAD commit carries it).
         run: |
           git add -- modules/ stacks/
           if git diff --cached --quiet; then
             echo "No test files changed; nothing to commit."
           else
-            git commit -m "test: agent-generated and reviewed tests for PR #${{ github.event.pull_request.number }}"
+            git -c user.name="Terraform Test Agent" \
+                -c user.email="tf-test-agent@users.noreply.github.com" \
+                commit \
+                -m "test: agent-generated and reviewed tests for PR #${{ github.event.pull_request.number }}" \
+                -m "[skip ci] The agent's own commit must not re-trigger the agent."
             git push
           fi
 
