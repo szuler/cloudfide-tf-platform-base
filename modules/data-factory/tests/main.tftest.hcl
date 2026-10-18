@@ -72,6 +72,24 @@ run "linked_storage_creates_one_linked_service_per_account" {
     condition     = azurerm_data_factory_linked_service_data_lake_storage_gen2.this["adls"].url == "https://myaccount.dfs.core.windows.net"
     error_message = "Linked service URL must match the input DFS endpoint (each.value wiring)."
   }
+
+  assert {
+    condition     = azurerm_data_factory_linked_service_data_lake_storage_gen2.this["adls"].name == "ls-adls"
+    error_message = "Linked service name must be ls-<key> (each.key wiring in the ls-$${each.key} interpolation)."
+  }
+}
+
+run "public_network_disabled_reaches_the_resource" {
+  command = plan
+
+  variables {
+    public_network_enabled = false
+  }
+
+  assert {
+    condition     = azurerm_data_factory.this.public_network_enabled == false
+    error_message = "Setting public_network_enabled=false must reach the resource — var.public_network_enabled wiring must not be dropped or overridden."
+  }
 }
 
 run "no_linked_storage_accounts_creates_no_linked_services" {
