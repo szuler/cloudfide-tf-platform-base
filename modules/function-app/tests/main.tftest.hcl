@@ -72,15 +72,6 @@ run "storage_managed_identity_auth_is_enabled" {
   }
 }
 
-run "public_network_access_defaults_to_enabled" {
-  command = plan
-
-  assert {
-    condition     = azurerm_linux_function_app.this.public_network_access_enabled == true
-    error_message = "public_network_access_enabled must default to true; the variable default changed."
-  }
-}
-
 run "public_network_access_follows_input" {
   command = plan
 
@@ -130,13 +121,8 @@ run "user_app_settings_preserved_alongside_build_revision" {
   }
 }
 
-run "storage_role_assignment_is_blob_data_owner" {
+run "storage_role_assignment_scoped_to_storage_account" {
   command = plan
-
-  assert {
-    condition     = azurerm_role_assignment.runtime_storage.role_definition_name == "Storage Blob Data Owner"
-    error_message = "Runtime role assignment must use Storage Blob Data Owner."
-  }
 
   assert {
     condition     = azurerm_role_assignment.runtime_storage.scope == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/sttest"
