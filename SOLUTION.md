@@ -307,18 +307,21 @@ modules can be compared.
 | `log-analytics-workspace` | — | 3 runs | main (added during development, before the PR workflow existed) | not checked | — |
 | `network` | 3 runs | 3 runs | main (original) | 1/1 | — |
 | `private-endpoint` | — | 7 runs | main (via PR [#13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13)) | not checked | — |
-| `storage-account` | 3 runs | 3 runs | main (original) | 4/7 | `shared_access_key_enabled = false`, `https_traffic_only_enabled = true`, a `false` default |
+| `storage-account` | 3 runs | 7 runs | main (original + audit, PR [#17](https://github.com/szuler/cloudfide-tf-platform-base/pull/17)) | 6/7 (was 4/7) | default `is_data_lake = false` |
 | `stacks/data-platform` | — | — | — | — | not tested |
 
 How to read it:
 - **"Not checked" means no mutation pattern applied**, not that the tests are perfect. The
   mutation set is a few regexes, so a small score like 2/2 is a weak signal.
-- **The three original suites were never touched by the agent.** It reviews only the modules a
-  PR changes. Their survivors are real gaps. For example, nothing would notice if
-  `storage-account` re-enabled shared-key access.
+- **The PR workflow never reviews the original suites.** It reviews only the modules a PR
+  changes. Their survivors are real gaps: until the audit, nothing would have noticed
+  `storage-account` re-enabling shared-key access.
 - **Existing suites are reviewed by a separate, manual audit run** (see
   [How to run it](#how-to-run-it)). It proposes tests as a patch and measures them by mutation
   score before vs after, without committing anything.
+  - `storage-account` went through the whole loop: audit run → the patch applied unchanged in PR
+    #17 → the test-only workflow re-ran it in CI (7/7 pass, 6/7 mutants, 54 s, no API cost).
+  - `key-vault` (2/4) is the obvious next audit.
 
 ## What the generated tests can and cannot show
 
