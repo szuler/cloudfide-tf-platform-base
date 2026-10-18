@@ -82,6 +82,12 @@ override_data {
   **count** — something that could break if the logic changed.
 - A security-posture assertion on a hard-coded safe default *is* worth keeping (it guards
   against a future regression), but label it as a guard, not as behaviour coverage.
+- A guard only protects a **safe** value. Never write a "guard" that pins something risky —
+  an over-broad role (`Storage Blob Data Owner`), a public-access default of `true`,
+  `ftps_state = "AllAllowed"`. That cements the risk, and it breaks the moment someone acts on
+  the finding about it. If you report it as a finding (`tf-risk-review`), do not pin it. If the
+  current value is genuinely worth a test, name the run and its `error_message` as "current
+  behaviour — see the finding", never as a security guard.
 
 ## Naming & hygiene
 

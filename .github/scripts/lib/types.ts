@@ -152,6 +152,8 @@ export interface TestFileChange {
 export interface LedgerRow {
   /** "run": recorded by that run. "history": rebuilt from git / the pre-ledger comment. */
   source: "run" | "history";
+  /** An earlier attempt of a re-run workflow run that changed tests (kept, not replaced). */
+  earlierAttempt?: boolean;
   runId?: string;
   runUrl?: string;
   /** The PR head the run evaluated. */
