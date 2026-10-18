@@ -81,7 +81,16 @@ test file, so writing it does not violate the scope guard. Shape:
 }
 ```
 
+`action` says what **you did to the target's test files in this run**:
+- `created`: you created its test file now;
+- `updated`: you changed an existing test file now;
+- `skipped`: you changed no test file in this run.
+
+Use `skipped` even when tests were created earlier in the same PR, and say so in `reason`. Git
+checks this: a `created`/`updated` without a test change in this run is corrected in the
+report.
+
 The workflow adds the authoritative test results (it re-runs the tests itself) and renders
-the PR comment and job summary. Keep `reason`/`detail` concise and factual; if you did not
+the PR comments and job summary. Keep `reason`/`detail` concise and factual; if you did not
 run (e.g. nothing to do), still write a report with an empty `decisions`/`findings` and say
 why in a `skipped` decision. Be honest about uncertainty; do not pad the report with noise.

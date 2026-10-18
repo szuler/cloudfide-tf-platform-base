@@ -197,7 +197,7 @@ claude -p "Write tests for modules/<name>" --agent terraform-test-engineer
 | `.claude/skills/tf-diagnose-test-failures` | When a test fails, is the test wrong or the code? Never "fix" code to pass. |
 | `.claude/skills/tf-risk-review` | Findings with location, impact and confidence (`fact` / `likely` / `hypothesis`); claims about Azure from memory are at most `likely`. |
 | `.claude/skills/tf-review-tests` | The critic's checklist: try to reject each assertion; edit or review-only mode. |
-| `.claude/skills/tf-coverage-matrix` | Backfill: what behaviour a module has vs what its tests cover. |
+| `.claude/skills/tf-coverage-matrix` | Backfill: what behaviour a module has vs what its tests cover. **Not wired into the CI prompt.** Only the agent file mentions it, and neither CI backfill (PRs #11, #13) reported using it. It's used in local runs; wiring it in is listed under [Limitations](#limitations). |
 | `.github/scripts/` | The deterministic steps. Pure logic sits in `lib/` with colocated `*.test.ts`. |
 
 **At run time:**
@@ -306,6 +306,11 @@ level.
 - **The mutation check** has one mutant per type and module, uses regexes over HCL text, and
   has no "weakened test" detection (differential). The regexes miss forms they weren't written
   for. On `private-endpoint` nothing applied, and the check reports "not checked", not a score.
+- **The skills grew through fixes, one PR at a time.** A few rules repeat between the author's
+  and the critic's skills, and `tf-coverage-matrix` isn't wired into the CI prompt.
+  Consolidating them should wait for the golden-PR regression suite (see
+  [Production](#what-would-change-for-a-production-version)). Without it, a prompt refactor
+  can't be shown to help rather than hurt.
 - **The critic doesn't catch every tautology.** On PR #13 it kept an assertion that restates a
   hard-coded, non-security `is_manual_connection = false`.
 - **The critic** reviews only the changed modules' tests, and only when the author pass
