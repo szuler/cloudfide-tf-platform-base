@@ -20,7 +20,7 @@ variable "public_network_enabled" {
 }
 
 variable "log_analytics_workspace_id" {
-  description = "Workspace that receives the factory's diagnostic logs."
+  description = "Log Analytics workspace that receives the factory's diagnostic logs."
   type        = string
 }
 
