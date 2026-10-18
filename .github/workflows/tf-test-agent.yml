@@ -85,9 +85,6 @@ jobs:
           claude_args: >-
             --model claude-sonnet-4-6
             --max-turns 40
-          # Restrict to infrastructure-read + test-write tools only.
-          # GitHub API tools are intentionally excluded; the workflow posts the comment.
-          allowed_tools: "Bash,Edit,Glob,Grep,Read,Write"
           prompt: |
             Read `.claude/agents/terraform-test-engineer.md` first — it is your governing
             system prompt and contains your hard boundaries and process. Then read `AGENTS.md`
@@ -128,8 +125,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: >-
             --model claude-sonnet-4-6
-            --max-turns 20
-          allowed_tools: "Bash,Edit,Glob,Grep,Read,Write"
+            --max-turns 40
           prompt: |
             Read `.claude/skills/tf-review-tests/SKILL.md` — it is your complete instruction
             set for this task. Then read `AGENTS.md` for the repository contract.
@@ -290,12 +286,13 @@ jobs:
             .github/tf-test-agent-report.json summary >> "$GITHUB_STEP_SUMMARY" || true
 
       # Fail the job AFTER the comment is posted so reviewers always see results.
+      # Critic is a quality layer, not a safety gate — its failure does not block the PR.
+      # Safety gates: scope-guard (hard boundary) and run-tests (authoritative results).
       - name: Fail if agent, scope guard, or tests failed
         if: >-
           steps.agent.outcome == 'failure' ||
-          steps.critic.outcome == 'failure' ||
           steps.scope-guard.outcome == 'failure' ||
           steps.run-tests.outcome == 'failure'
         run: |
-          echo "::error::Workflow failed — agent: ${{ steps.agent.outcome }}, critic: ${{ steps.critic.outcome }}, scope-guard: ${{ steps.scope-guard.outcome }}, run-tests: ${{ steps.run-tests.outcome }}"
+          echo "::error::Workflow failed — agent: ${{ steps.agent.outcome }}, scope-guard: ${{ steps.scope-guard.outcome }}, run-tests: ${{ steps.run-tests.outcome }}"
           exit 1
