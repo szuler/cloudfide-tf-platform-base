@@ -56,6 +56,37 @@ test("notRun short-circuits with a warning (degraded path)", () => {
   assert.ok(!md.includes("FTP is enabled"));
 });
 
+test("problems and warnings render above the results, results still shown", () => {
+  const md = renderComment({
+    ...baseReport,
+    problems: ["The agent did not produce a report"],
+    warnings: ["author pass: 2 tool call(s) were blocked"],
+  });
+  assert.ok(md.includes("Agent run incomplete"));
+  assert.ok(md.indexOf("did not produce a report") < md.indexOf("### Decisions"));
+  assert.ok(md.includes("2 tool call(s) were blocked"));
+  assert.ok(md.includes("4 passed"));
+});
+
+test("missing decisions under a problem are not rendered as 'nothing to do' (negative)", () => {
+  const md = renderComment({ ...baseReport, decisions: [], problems: ["no report"] });
+  assert.ok(md.includes("No decisions recorded"));
+  assert.ok(!md.includes("No Terraform changes required test updates"));
+});
+
+test("decision shows git's new/existing fact and labels the action as about tests", () => {
+  const existing = renderComment({
+    ...baseReport,
+    decisions: [{ target: "modules/network", action: "created", reason: "r", targetIsNew: false }],
+  });
+  assert.ok(existing.includes("**modules/network** _(existing)_ — tests created: r"));
+  const fresh = renderComment({
+    ...baseReport,
+    decisions: [{ target: "modules/x", action: "created", reason: "r", targetIsNew: true }],
+  });
+  assert.ok(fresh.includes("_(new in this PR)_"));
+});
+
 test("no findings renders a placeholder", () => {
   const md = renderComment({ ...baseReport, findings: [] });
   assert.ok(md.includes("No findings"));

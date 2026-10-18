@@ -57,3 +57,14 @@ export function detectChangedTargets(files: string[]): DetectResult {
   for (const t of targets) t.files.sort();
   return { targets, ignored: ignored.sort() };
 }
+
+/**
+ * Mark each target new or existing. `existsAtBase` answers "did this dir exist at the PR's
+ * base commit?" — injected so this stays pure (the CLI asks git).
+ */
+export function markNewTargets(result: DetectResult, existsAtBase: (dir: string) => boolean): DetectResult {
+  return {
+    ...result,
+    targets: result.targets.map((t) => ({ ...t, isNew: !existsAtBase(t.dir) })),
+  };
+}

@@ -1,10 +1,17 @@
 // Pure logic: render the single sticky PR comment (and job summary) markdown.
-import type { Finding, ModuleTestResult, Report, Severity, TestReviewVote } from "./types.ts";
+import type { AgentDecision, Finding, ModuleTestResult, Report, Severity, TestReviewVote } from "./types.ts";
 
 /** Hidden marker so the workflow can find-and-update one comment instead of spamming. */
 export const COMMENT_MARKER = "<!-- tf-test-agent -->";
 
 const SEVERITY_ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2, info: 3 };
+
+/** `action` describes the test file, not the module — say so, so "created" isn't read as "new module". */
+const ACTION_LABEL: Record<AgentDecision["action"], string> = {
+  created: "tests created",
+  updated: "tests updated",
+  skipped: "skipped",
+};
 
 function statusIcon(ok: boolean): string {
   return ok ? "✅" : "❌";
@@ -56,13 +63,26 @@ export function renderComment(report: Report): string {
     return parts.join("\n");
   }
 
+  if (report.problems?.length) {
+    parts.push("> ❌ **Agent run incomplete — do not read the sections below as a pass:**");
+    for (const p of report.problems) parts.push(`> - ${p}`);
+    parts.push("");
+  }
+  if (report.warnings?.length) {
+    parts.push("> ⚠️ **Warnings:**");
+    for (const w of report.warnings) parts.push(`> - ${w}`);
+    parts.push("");
+  }
+
   parts.push("### Decisions", "");
   if (report.decisions.length === 0) {
-    parts.push("_No Terraform changes required test updates._", "");
+    const empty = report.problems?.length ? "_No decisions recorded._" : "_No Terraform changes required test updates._";
+    parts.push(empty, "");
   } else {
     for (const d of report.decisions) {
       const skills = d.skillsUsed?.length ? ` _(skills: ${d.skillsUsed.join(", ")})_` : "";
-      parts.push(`- **${d.target}** — ${d.action}: ${d.reason}${skills}`);
+      const kind = d.targetIsNew === undefined ? "" : d.targetIsNew ? " _(new in this PR)_" : " _(existing)_";
+      parts.push(`- **${d.target}**${kind} — ${ACTION_LABEL[d.action]}: ${d.reason}${skills}`);
     }
     parts.push("");
   }
