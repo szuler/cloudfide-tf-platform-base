@@ -3,12 +3,12 @@
 //   or:  BASE_REF=origin/main HEAD_REF=HEAD node scripts/detect-changed-modules.ts
 import { run } from "./lib/exec.ts";
 import { detectChangedTargets, markNewTargets } from "./lib/changed.ts";
+import { existsAt, mergeBase } from "./lib/git.ts";
 
-/** Did `dir` exist at the merge base of the two refs? (falls back to baseRef itself) */
+/** Did `dir` exist at the merge base of the two refs? */
 function existsAtBase(baseRef: string, headRef: string): (dir: string) => boolean {
-  const mb = run("git", ["merge-base", baseRef, headRef], process.cwd());
-  const base = mb.code === 0 ? mb.stdout.trim() : baseRef;
-  return (dir) => run("git", ["cat-file", "-e", `${base}:${dir}`], process.cwd()).code === 0;
+  const base = mergeBase(baseRef, headRef);
+  return (dir) => existsAt(base, dir);
 }
 
 function getChangedFiles(baseRef: string, headRef: string): string[] {

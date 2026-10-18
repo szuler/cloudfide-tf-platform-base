@@ -2,46 +2,98 @@
 // temp dir, apply the mutation, run `terraform test`, and expect it to FAIL.
 // A mutation the tests still PASS under is a coverage gap ("survived"). A mutant that does not
 // even init or plan is "invalid" and counts for nothing.
-// Usage: TERRAFORM_BIN=... node .github/scripts/mutation-check.ts [--json <out.json>] <dir>...
+// Usage: TERRAFORM_BIN=... node .github/scripts/mutation-check.ts [--base <ref>] [--json <out.json>] <dir>...
+// With --base (CI passes the PR's base commit), each module gets a scope from git facts: a suite
+// created in the PR is judged as a whole; otherwise the headline is mutants on changed lines, and
+// each mutation prefers an occurrence on a changed line. Without it, every mutant counts.
 // Exit: 0 = no survivors, 1 = at least one survived, 2 = usage error, 3 = nothing was checked.
 // Locally the exit code is the answer; in CI the JSON feeds the PR comment (informational).
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { run, terraformBin } from "./lib/exec.ts";
+import { existsAt, mergeBase } from "./lib/git.ts";
 import { parseTestJson } from "./lib/tf-report.ts";
 import {
-  applyMutation,
+  applyMutationPreferring,
   classifyMutationRun,
   DEFAULT_MUTATIONS,
+  headlineResults,
   mutationTargetsFile,
+  parseChangedLines,
+  restResults,
+  score,
   type Mutation,
 } from "./lib/mutate.ts";
-import type { MutationOutcome, MutationReport } from "./lib/types.ts";
+import type { MutationOutcome, MutationReport, MutationScope } from "./lib/types.ts";
 
 // On Windows a provider binary can stay locked briefly after Terraform exits (EPERM/EBUSY);
 // Node retries those errors when maxRetries is set.
 const RM_TREE = { recursive: true, force: true, maxRetries: 10, retryDelay: 200 } as const;
 
+const SCOPE_LABEL: Record<MutationScope, string> = {
+  "suite-created": "suite created in this PR",
+  change: "changed code",
+  module: "module",
+};
+
 function tfSourceFiles(dir: string): string[] {
   return readdirSync(dir).filter((f) => f.endsWith(".tf"));
 }
 
-/** Find, for each mutation, a source file it applies to (first match wins). */
-function applicableMutations(moduleDir: string): Array<{ mutation: Mutation; file: string }> {
-  const files = tfSourceFiles(moduleDir);
-  const out: Array<{ mutation: Mutation; file: string }> = [];
+interface PlannedMutant {
+  mutation: Mutation;
+  file: string;
+  /** The mutated file content. */
+  content: string;
+  line?: number;
+  inChange: boolean;
+}
+
+/**
+ * One mutant per mutation: the first occurrence on a changed line in any file, otherwise the
+ * first occurrence anywhere. `changed` maps a module file name to its changed line numbers.
+ */
+function planMutants(moduleDir: string, changed: Map<string, Set<number>>): PlannedMutant[] {
+  const out: PlannedMutant[] = [];
   for (const mutation of DEFAULT_MUTATIONS) {
-    for (const file of files) {
+    let fallback: PlannedMutant | undefined;
+    let chosen: PlannedMutant | undefined;
+    for (const file of tfSourceFiles(moduleDir)) {
       if (!mutationTargetsFile(mutation, file)) continue;
-      const content = readFileSync(join(moduleDir, file), "utf8");
-      if (applyMutation(content, mutation).applied) {
-        out.push({ mutation, file });
+      const placed = applyMutationPreferring(readFileSync(join(moduleDir, file), "utf8"), mutation, changed.get(file));
+      if (!placed.applied) continue;
+      const mutant = { mutation, file, content: placed.result, line: placed.line, inChange: placed.inChange };
+      if (placed.inChange) {
+        chosen = mutant;
         break;
       }
+      fallback ??= mutant;
     }
+    const pick = chosen ?? fallback;
+    if (pick) out.push(pick);
   }
   return out;
+}
+
+/** The module's path relative to the repo root (git's form), or null if it is outside it. */
+function repoPath(moduleDir: string): string | null {
+  const rel = relative(process.cwd(), resolve(moduleDir));
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
+  return rel.split(sep).join("/");
+}
+
+/** Scope and changed lines (by module file name) for a module, from git. */
+function gitScope(moduleDir: string, base: string | undefined): { scope: MutationScope; changed: Map<string, Set<number>> } {
+  const rel = repoPath(moduleDir);
+  if (!base || !rel) return { scope: "module", changed: new Map() };
+  const suiteExisted = existsAt(mergeBase(base, "HEAD"), `${rel}/tests`);
+  const diff = run("git", ["diff", "-U0", `${base}...HEAD`, "--", rel], process.cwd());
+  const changed = new Map<string, Set<number>>();
+  for (const [path, lines] of parseChangedLines(diff.code === 0 ? diff.stdout : "")) {
+    if (path.startsWith(`${rel}/`)) changed.set(path.slice(rel.length + 1), lines);
+  }
+  return { scope: suiteExisted ? "change" : "suite-created", changed };
 }
 
 function copyTree(from: string, to: string): void {
@@ -67,15 +119,13 @@ function stageCopy(root: string, moduleDir: string): string {
   return dir;
 }
 
-function runMutation(moduleDir: string, mutation: Mutation, file: string): MutationOutcome {
+function runMutation(moduleDir: string, mutant: PlannedMutant): MutationOutcome {
   const tf = terraformBin();
-  const root = mkdtempSync(join(tmpdir(), `mut-${mutation.name}-`));
+  const root = mkdtempSync(join(tmpdir(), `mut-${mutant.mutation.name}-`));
   try {
     const tmp = stageCopy(root, moduleDir);
     rmSync(join(tmp, ".terraform.lock.hcl"), { force: true });
-
-    const target = join(tmp, file);
-    writeFileSync(target, applyMutation(readFileSync(target, "utf8"), mutation).result);
+    writeFileSync(join(tmp, mutant.file), mutant.content);
 
     const init = run(tf, ["init", "-backend=false", "-no-color", "-input=false"], tmp);
     if (init.code !== 0) return "invalid";
@@ -98,19 +148,22 @@ function removeBestEffort(dir: string): void {
   }
 }
 
-function checkModule(moduleDir: string): MutationReport {
+function checkModule(moduleDir: string, base: string | undefined): MutationReport {
   if (!existsSync(join(moduleDir, "tests"))) {
     return { dir: moduleDir, results: [], note: "no tests/ directory — nothing to mutation-check" };
   }
-  const applicable = applicableMutations(moduleDir);
-  if (applicable.length === 0) {
-    return { dir: moduleDir, results: [], note: "no applicable mutation — not checked" };
+  const { scope, changed } = gitScope(moduleDir, base);
+  const mutants = planMutants(moduleDir, changed);
+  if (mutants.length === 0) {
+    return { dir: moduleDir, scope, results: [], note: "no applicable mutation — not checked" };
   }
-  const report: MutationReport = { dir: moduleDir, results: [] };
-  for (const { mutation, file } of applicable) {
-    const outcome = runMutation(moduleDir, mutation, file);
-    report.results.push({ name: mutation.name, file, outcome, hint: mutation.hint });
-    process.stderr.write(`  ${outcome.padEnd(8)}  ${mutation.name} (${moduleDir}/${file})\n`);
+  const report: MutationReport = { dir: moduleDir, scope, results: [] };
+  for (const mutant of mutants) {
+    const outcome = runMutation(moduleDir, mutant);
+    const { mutation, file, line, inChange } = mutant;
+    report.results.push({ name: mutation.name, file, line, inChange, outcome, hint: mutation.hint });
+    const where = `${moduleDir}/${file}:${line}${inChange ? ", changed line" : ""}`;
+    process.stderr.write(`  ${outcome.padEnd(8)}  ${mutation.name} (${where})\n`);
   }
   return report;
 }
@@ -118,13 +171,15 @@ function checkModule(moduleDir: string): MutationReport {
 function main(): void {
   const args = process.argv.slice(2);
   let jsonOut: string | undefined;
+  let base: string | undefined;
   const dirs: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--json") jsonOut = args[++i];
+    else if (args[i] === "--base") base = args[++i];
     else dirs.push(args[i]!);
   }
-  if (dirs.length === 0 || (args.includes("--json") && !jsonOut)) {
-    process.stderr.write("usage: mutation-check [--json <out.json>] <module-dir>...\n");
+  if (dirs.length === 0 || (args.includes("--json") && !jsonOut) || (args.includes("--base") && !base)) {
+    process.stderr.write("usage: mutation-check [--base <ref>] [--json <out.json>] <module-dir>...\n");
     process.exit(2);
   }
 
@@ -134,7 +189,7 @@ function main(): void {
 
   const reports: MutationReport[] = [];
   try {
-    for (const dir of dirs) reports.push(checkModule(dir));
+    for (const dir of dirs) reports.push(checkModule(dir, base));
   } finally {
     removeBestEffort(cache);
   }
@@ -148,13 +203,18 @@ function main(): void {
       process.stdout.write(`${r.dir}: ${r.note}\n`);
       continue;
     }
-    const count = (o: MutationOutcome) => r.results.filter((x) => x.outcome === o).length;
-    const scored = count("caught") + count("survived");
-    checked += scored;
-    survivedTotal += count("survived");
-    process.stdout.write(`${r.dir}: ${count("caught")}/${scored} caught, ${count("invalid")} invalid mutant(s)\n`);
+    const all = score(r.results);
+    checked += all.scored;
+    survivedTotal += all.scored - all.caught;
+    const head = score(headlineResults(r));
+    process.stdout.write(`${r.dir} — ${SCOPE_LABEL[r.scope ?? "module"]}: ${head.caught}/${head.scored} caught, ${head.invalid} invalid mutant(s)\n`);
+    const rest = restResults(r);
+    if (rest.length) {
+      const s = score(rest);
+      process.stdout.write(`  rest of the module (pre-existing tests): ${s.caught}/${s.scored} caught\n`);
+    }
     for (const s of r.results.filter((x) => x.outcome === "survived")) {
-      process.stdout.write(`  survived: ${s.name} (${s.file}) — ${s.hint}\n`);
+      process.stdout.write(`  survived: ${s.name} (${s.file}:${s.line}) — ${s.hint}\n`);
     }
   }
 

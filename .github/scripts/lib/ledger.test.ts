@@ -122,6 +122,26 @@ test("a row summarises tests, mutations (invalid not scored), critic and decisio
   assert.equal(row.decisions?.[0]?.target, "modules/data-factory");
 });
 
+test("the ledger's mutation score is the headline score, not the whole module", () => {
+  const row = rowFromReport(
+    {
+      ...report,
+      mutations: [
+        {
+          dir: "modules/data-factory",
+          scope: "change",
+          results: [
+            { name: "a", file: "main.tf", inChange: true, outcome: "survived", hint: "" },
+            { name: "b", file: "main.tf", inChange: false, outcome: "caught", hint: "" },
+          ],
+        },
+      ],
+    },
+    ctx,
+  );
+  assert.deepEqual(row.mutation, { caught: 0, scored: 1 });
+});
+
 test("a report with problems makes a failed row (negative)", () => {
   const row = rowFromReport({ ...report, problems: ["No decision recorded for `x`."] }, ctx);
   assert.equal(row.status, "failed");

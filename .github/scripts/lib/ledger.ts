@@ -10,6 +10,7 @@
 // report. The rows are also kept as state inside the ledger, so a force-push that drops an
 // agent commit does not erase its row.
 import { renderReportBody } from "./comment.ts";
+import { headlineResults, score } from "./mutate.ts";
 import type {
   AgentCommit,
   AgentReport,
@@ -182,9 +183,9 @@ export function rowFromReport(report: Report, ctx: RunContext): LedgerRow {
   row.tests = { passed, total };
 
   if (report.mutations?.length) {
-    const results = report.mutations.flatMap((m) => m.results);
-    const caught = results.filter((m) => m.outcome === "caught").length;
-    row.mutation = { caught, scored: caught + results.filter((m) => m.outcome === "survived").length };
+    // The headline score: what this PR's change / this PR's new suite is judged on.
+    const { caught, scored } = score(report.mutations.flatMap(headlineResults));
+    row.mutation = { caught, scored };
   }
   row.decisions = report.decisions.map(({ target, action, reason }) => ({
     target,

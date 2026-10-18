@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyMutation, classifyMutationRun, DEFAULT_MUTATIONS, mutationTargetsFile } from "./mutate.ts";
+import {
+  applyMutation,
+  applyMutationPreferring,
+  classifyMutationRun,
+  DEFAULT_MUTATIONS,
+  headlineResults,
+  mutationTargetsFile,
+  parseChangedLines,
+  restResults,
+  score,
+} from "./mutate.ts";
 import type { TestReport } from "./types.ts";
 
 const byName = (name: string) => DEFAULT_MUTATIONS.find((m) => m.name === name)!;
@@ -57,6 +67,63 @@ test("count-flip and bool-default flips", () => {
   assert.equal(applyMutation("  count = var.on ? 1 : 0\n", byName("count-flip")).result, "  count = var.on ? 0 : 1\n");
   assert.equal(applyMutation("  default     = true\n", byName("bool-default-off")).result, "  default     = false\n");
   assert.equal(applyMutation("  default = false\n", byName("bool-default-on")).result, "  default = true\n");
+});
+
+const TWO_DEFAULTS = [
+  'variable "a" {', "  default = true", "}", 'variable "b" {', "  default = true", "}", "",
+].join("\n");
+
+test("prefers the occurrence on a changed line over an earlier untouched one", () => {
+  const r = applyMutationPreferring(TWO_DEFAULTS, byName("bool-default-off"), new Set([5]));
+  assert.equal(r.line, 5);
+  assert.equal(r.inChange, true);
+  assert.ok(r.result.includes('variable "a" {\n  default = true'));
+  assert.ok(r.result.includes('variable "b" {\n  default = false'));
+});
+
+test("falls back to the first occurrence when no changed line matches", () => {
+  const r = applyMutationPreferring(TWO_DEFAULTS, byName("bool-default-off"), new Set([99]));
+  assert.equal(r.line, 2);
+  assert.equal(r.inChange, false);
+  assert.ok(r.result.startsWith('variable "a" {\n  default = false'));
+});
+
+test("placing keeps lookaheads exact: the chosen match is the one replaced (edge)", () => {
+  const src = "  a = x.value.name\n  b = y.value\n";
+  const r = applyMutationPreferring(src, byName("dynamic-value-corrupt"));
+  assert.equal(r.line, 2);
+  assert.equal(r.result, '  a = x.value.name\n  b = "${y.value}-mut"\n');
+});
+
+test("parses new-side changed lines from a -U0 diff", () => {
+  const diff = [
+    "diff --git a/modules/m/main.tf b/modules/m/main.tf",
+    "--- a/modules/m/main.tf",
+    "+++ b/modules/m/main.tf",
+    "@@ -29,2 +29,7 @@ resource",
+    "@@ -40 +45 @@",
+    "@@ -50,3 +54,0 @@",
+    "diff --git a/modules/m/gone.tf b/modules/m/gone.tf",
+    "--- a/modules/m/gone.tf",
+    "+++ /dev/null",
+    "@@ -1,2 +0,0 @@",
+  ].join("\n");
+  const lines = parseChangedLines(diff);
+  assert.deepEqual([...lines.get("modules/m/main.tf")!], [29, 30, 31, 32, 33, 34, 35, 45]);
+  assert.equal(lines.has("modules/m/gone.tf"), false);
+});
+
+test("headline and rest split by scope; score leaves invalid mutants out", () => {
+  const results = [
+    { name: "a", file: "main.tf", inChange: true, outcome: "caught" as const, hint: "" },
+    { name: "b", file: "main.tf", inChange: false, outcome: "survived" as const, hint: "" },
+    { name: "c", file: "main.tf", inChange: false, outcome: "invalid" as const, hint: "" },
+  ];
+  assert.deepEqual(headlineResults({ dir: "d", scope: "change", results }).map((r) => r.name), ["a"]);
+  assert.deepEqual(restResults({ dir: "d", scope: "change", results }).map((r) => r.name), ["b", "c"]);
+  assert.equal(headlineResults({ dir: "d", scope: "suite-created", results }).length, 3);
+  assert.deepEqual(restResults({ dir: "d", scope: "suite-created", results }), []);
+  assert.deepEqual(score(results), { caught: 1, scored: 2, invalid: 1 });
 });
 
 function report(partial: Partial<TestReport>): TestReport {

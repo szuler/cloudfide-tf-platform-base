@@ -3,7 +3,7 @@
 // A good test suite should FAIL when the code is mutated; a mutation the tests still pass
 // under is a coverage gap. Mutations are deliberately plain regexes over HCL text (first
 // occurrence only) — crude but transparent, and every one is unit-tested.
-import type { MutationOutcome, TestReport } from "./types.ts";
+import type { MutationOutcome, MutationReport, MutationResult, TestReport } from "./types.ts";
 import { reportIsPass } from "./tf-report.ts";
 
 export interface Mutation {
@@ -80,7 +80,7 @@ export const DEFAULT_MUTATIONS: Mutation[] = [
     pattern: /(\bcondition\s*=\s*)/,
     replace: "$1true || ",
     files: VARIABLES_TF,
-    hint: "no expect_failures test for the first validation block",
+    hint: "no expect_failures test trips this validation block",
   },
   {
     name: "count-flip",
@@ -93,14 +93,14 @@ export const DEFAULT_MUTATIONS: Mutation[] = [
     pattern: /(\bdefault\s*=\s*)true\b/,
     replace: "$1false",
     files: VARIABLES_TF,
-    hint: "no test pins the first `true` default",
+    hint: "no test pins this `true` default",
   },
   {
     name: "bool-default-on",
     pattern: /(\bdefault\s*=\s*)false\b/,
     replace: "$1true",
     files: VARIABLES_TF,
-    hint: "no test pins the first `false` default",
+    hint: "no test pins this `false` default",
   },
 ];
 
@@ -113,6 +113,70 @@ export function mutationTargetsFile(m: Mutation, fileName: string): boolean {
 export function applyMutation(content: string, m: Mutation): { applied: boolean; result: string } {
   if (!m.pattern.test(content)) return { applied: false, result: content };
   return { applied: true, result: content.replace(m.pattern, m.replace) };
+}
+
+export interface PlacedMutation {
+  applied: boolean;
+  result: string;
+  line?: number;
+  inChange: boolean;
+}
+
+/**
+ * Apply one occurrence of a mutation, preferring the first one on a changed line, so the
+ * mutant tests the PR's change rather than an untouched earlier match. Falls back to the
+ * first occurrence anywhere.
+ */
+export function applyMutationPreferring(content: string, m: Mutation, changed?: Set<number>): PlacedMutation {
+  const all = new RegExp(m.pattern.source, m.pattern.flags.includes("g") ? m.pattern.flags : `${m.pattern.flags}g`);
+  const lineAt = (index: number) => content.slice(0, index).split("\n").length;
+  const matches = [...content.matchAll(all)].map((x) => ({ index: x.index, line: lineAt(x.index) }));
+  if (matches.length === 0) return { applied: false, result: content, inChange: false };
+
+  const preferred = matches.find((x) => changed?.has(x.line));
+  const pick = preferred ?? matches[0]!;
+  // The first match in the tail starting at `pick.index` is exactly `pick`, and lookaheads
+  // still see the rest of the file, so a plain non-global replace on the tail is exact.
+  const tail = content.slice(pick.index).replace(m.pattern, m.replace);
+  return { applied: true, result: content.slice(0, pick.index) + tail, line: pick.line, inChange: preferred !== undefined };
+}
+
+/** New-side line numbers touched per file, from `git diff -U0` (paths as git prints them). */
+export function parseChangedLines(diff: string): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  let lines: Set<number> | undefined;
+  for (const line of diff.split(/\r?\n/)) {
+    const file = /^\+\+\+ (?:b\/)?(.+)$/.exec(line);
+    if (file) {
+      lines = file[1] === "/dev/null" ? undefined : new Set();
+      if (lines) out.set(file[1]!, lines);
+      continue;
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk && lines) {
+      const start = Number(hunk[1]);
+      const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      for (let n = start; n < start + count; n++) lines.add(n);
+    }
+  }
+  return out;
+}
+
+/** The results the headline numbers judge (see `MutationScope`). */
+export function headlineResults(r: MutationReport): MutationResult[] {
+  return r.scope === "change" ? r.results.filter((x) => x.inChange) : r.results;
+}
+
+/** Under scope "change": the mutants on unchanged lines, which judge pre-existing tests. */
+export function restResults(r: MutationReport): MutationResult[] {
+  return r.scope === "change" ? r.results.filter((x) => !x.inChange) : [];
+}
+
+/** Caught out of scored (caught + survived); invalid mutants say nothing and are left out. */
+export function score(results: MutationResult[]): { caught: number; scored: number; invalid: number } {
+  const caught = results.filter((x) => x.outcome === "caught").length;
+  const survived = results.filter((x) => x.outcome === "survived").length;
+  return { caught, scored: caught + survived, invalid: results.length - caught - survived };
 }
 
 /**

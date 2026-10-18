@@ -96,11 +96,26 @@ export interface MutationResult {
   file: string;
   outcome: MutationOutcome;
   hint: string;
+  /** 1-based line of the mutated occurrence. */
+  line?: number;
+  /** Whether the mutated line is one the PR changed. */
+  inChange?: boolean;
 }
+
+/**
+ * What the headline numbers judge, from git facts:
+ * - suite-created: the module had no tests at the PR's base, so the whole suite is new in this
+ *   PR and every mutant judges it.
+ * - change: the suite existed; the headline is mutants on lines the PR changed, the rest
+ *   judges pre-existing tests.
+ * - module: no base to compare with (local run); every mutant counts.
+ */
+export type MutationScope = "suite-created" | "change" | "module";
 
 /** Mutation check of one module's test suite. Informational: never fails the job. */
 export interface MutationReport {
   dir: string;
+  scope?: MutationScope;
   results: MutationResult[];
   /** Set when nothing was checked (no tests, no applicable mutation). */
   note?: string;

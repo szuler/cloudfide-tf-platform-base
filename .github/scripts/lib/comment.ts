@@ -1,9 +1,12 @@
 // Pure logic: render the single sticky PR comment (and job summary) markdown.
+import { headlineResults, restResults, score } from "./mutate.ts";
 import type {
   AgentDecision,
   Finding,
   ModuleTestResult,
   MutationReport,
+  MutationResult,
+  MutationScope,
   Report,
   Severity,
   TestReviewVote,
@@ -62,14 +65,44 @@ function renderMutations(reports: MutationReport[]): string {
       out.push(`- \`${r.dir}\`: ${r.note}`);
       continue;
     }
-    const caught = r.results.filter((x) => x.outcome === "caught").length;
-    const survived = r.results.filter((x) => x.outcome === "survived");
-    const invalid = r.results.filter((x) => x.outcome === "invalid").length;
-    const ignored = invalid ? `, ${invalid} invalid mutant(s) ignored` : "";
-    out.push(`- \`${r.dir}\`: ${caught}/${caught + survived.length} caught${ignored}`);
-    for (const s of survived) out.push(`  - ⚠️ survived \`${s.name}\` (\`${s.file}\`) — ${s.hint}`);
+    const head = headlineResults(r);
+    const label = SCOPE_LABEL[r.scope ?? "module"];
+    if (r.scope === "change" && head.length === 0) {
+      out.push(`- \`${r.dir}\` — ${label}: no mutation applies to the changed lines`);
+    } else {
+      out.push(`- \`${r.dir}\` — ${label}: ${scoreLine(head)}`);
+      out.push(...survivorLines(head, "  "));
+    }
+    const rest = restResults(r);
+    if (rest.length) {
+      out.push(
+        "",
+        `  <details><summary>Rest of the module (pre-existing tests): ${scoreLine(rest)}</summary>`,
+        "",
+        ...survivorLines(rest, "  "),
+        "",
+        "  </details>",
+      );
+    }
   }
   return out.join("\n");
+}
+
+const SCOPE_LABEL: Record<MutationScope, string> = {
+  "suite-created": "tests created in this PR (the whole suite is new, so every mutant judges it)",
+  change: "code changed in this PR",
+  module: "whole module",
+};
+
+function scoreLine(results: MutationResult[]): string {
+  const s = score(results);
+  return `${s.caught}/${s.scored} caught${s.invalid ? `, ${s.invalid} invalid mutant(s) ignored` : ""}`;
+}
+
+function survivorLines(results: MutationResult[], indent: string): string[] {
+  return results
+    .filter((x) => x.outcome === "survived")
+    .map((s) => `${indent}- ⚠️ survived \`${s.name}\` (\`${s.file}${s.line ? `:${s.line}` : ""}\`) — ${s.hint}`);
 }
 
 function renderFindings(findings: Finding[]): string {
