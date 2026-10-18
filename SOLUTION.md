@@ -15,10 +15,10 @@ results:
 
 | Where to look | What it shows |
 | --- | --- |
-| [PR #5](https://github.com/szuler/cloudfide-tf-platform-base/pull/5) and its [summary comment](https://github.com/szuler/cloudfide-tf-platform-base/pull/5#issuecomment-6249965170) | **The example PR.** Seven runs on one change, before and after the agent was improved (see [Example run](#example-run)). |
-| [PR #11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11) | Backfill of `function-app`: mocking `data "external"`, plus a wrong finding that was fixed in the skills. |
+| [PR #5](https://github.com/szuler/cloudfide-tf-platform-base/pull/5) (open, kept as a demo) and its [summary comment](https://github.com/szuler/cloudfide-tf-platform-base/pull/5#issuecomment-6249965170) | **The example PR.** Seven runs on one change, before and after the agent was improved (see [Example run](#example-run)). |
+| [PR #11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11) (open, kept as a demo) | Backfill of `function-app`: mocking `data "external"`, plus a wrong finding that was fixed in the skills. |
 | [PR #3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3) (merged) | The simplest first run: `databricks-workspace`. |
-| [PR #13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13) | Backfill of `private-endpoint`, on the final version of the tooling. |
+| [PR #13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13) (merged) | Backfill of `private-endpoint`, after the skill fixes from PR #12. |
 | PRs #2, #4, #6–#10, #12 (merged) | Changes to the agent itself, each one prompted by something a demo run showed. |
 
 ## How it works
@@ -230,7 +230,7 @@ shows all seven runs:
   flagged for a person to decide: pinning it would cement public access as the default.
 
 **Other cases:**
-- **[PR #11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11)** (`function-app`):
+- **[PR #11](https://github.com/szuler/cloudfide-tf-platform-base/pull/11)** (`function-app`, open):
   - 12 tests, with `mock_provider "external"` + `override_data`, so `build-info.sh` never runs.
   - Run 1 claimed "Storage Blob Data **Contributor** has no delete". That's false according to
     the [Microsoft Learn built-in roles page](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/storage).
@@ -238,9 +238,9 @@ shows all seven runs:
     default.
   - After PR #12 changed the skills, run 2 states the role correctly, removes both "guards", and
     also reports the `data "external"` script.
-- **[PR #3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3)** (`databricks-workspace`):
+- **[PR #3](https://github.com/szuler/cloudfide-tf-platform-base/pull/3)** (`databricks-workspace`, merged):
   7 tests, one strengthened by the critic, 2 findings.
-- **[PR #13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13)** (`private-endpoint`):
+- **[PR #13](https://github.com/szuler/cloudfide-tf-platform-base/pull/13)** (`private-endpoint`, merged):
   - 7 tests, both private-DNS branches included; the critic added a value assertion on the zone
     ID.
   - It also shows the limits. The mutation check found **no applicable mutant**: the `dynamic`
