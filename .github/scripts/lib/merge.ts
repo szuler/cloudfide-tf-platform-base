@@ -32,9 +32,19 @@ export interface MergeInput {
   mutations?: MutationReport[];
   /** Warnings raised by workflow steps (e.g. critic edits that were undone). */
   notes?: string[];
+  /** Test files the author pass changed in this run (from git); undefined when unknown. */
+  authorTestChanges?: string[];
 }
 
-export function mergeReport({ agent, results, targets, denials, mutations, notes }: MergeInput): Report {
+export function mergeReport({
+  agent,
+  results,
+  targets,
+  denials,
+  mutations,
+  notes,
+  authorTestChanges,
+}: MergeInput): Report {
   const problems: string[] = [];
   const warnings: string[] = [...(notes ?? [])];
 
@@ -49,9 +59,16 @@ export function mergeReport({ agent, results, targets, denials, mutations, notes
 
   // New-vs-existing is a git fact, so it overrides whatever the agent inferred.
   const isNew = new Map(targets.map((t) => [t.dir, t.isNew]));
+  // Likewise "created"/"updated" means the author changed this target's tests in this run;
+  // if git shows it did not, the label is corrected and the agent's claim kept alongside.
   const decisions = (agent?.decisions ?? []).map((d) => {
     const known = isNew.get(d.target);
-    return known === undefined ? d : { ...d, targetIsNew: known };
+    let out = known === undefined ? d : { ...d, targetIsNew: known };
+    const touched = authorTestChanges?.some((p) => p.startsWith(`${d.target}/`));
+    if (d.action !== "skipped" && authorTestChanges && !touched) {
+      out = { ...out, action: "skipped", reportedAction: d.action };
+    }
+    return out;
   });
 
   for (const [pass, n] of Object.entries(denials)) {
