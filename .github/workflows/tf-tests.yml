@@ -1,0 +1,103 @@
+name: Terraform Tests
+
+# The agent workflow runs on infrastructure changes (`*.tf`, `*.tfvars`). A pull request that
+# changes only tests — such as a patch from the audit workflow — matches none of its paths, so
+# without this workflow no test would run on it. This one runs the changed modules' tests and
+# the mutation check, deterministically: no agent, no API key, read-only token.
+# When a PR changes both code and tests, both workflows run; the tests just run twice.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'modules/**/tests/**'
+      - 'stacks/**/tests/**'
+      - '**/*.tftest.hcl'
+
+concurrency:
+  group: tf-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Terraform tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so the three-dot git diff in detect-changed-modules works.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '~> 1.9'
+
+      - name: Detect changed modules
+        id: detect
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node --experimental-strip-types .github/scripts/detect-changed-modules.ts \
+            > /tmp/changed-targets.json
+          DIRS=$(node -e "
+            const d = JSON.parse(require('fs').readFileSync('/tmp/changed-targets.json', 'utf8'));
+            process.stdout.write(d.targets.map(t => t.dir).join(' '));
+          ")
+          echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
+          echo "Changed modules: ${DIRS:-(none)}"
+
+      # Module dirs come from file paths in the PR, so they reach the shell only through an env
+      # var (word-split into arguments, never parsed as commands), not as `${{ }}` in the script.
+      - name: Run tests
+        id: run-tests
+        if: steps.detect.outputs.dirs != ''
+        continue-on-error: true
+        env:
+          DIRS: ${{ steps.detect.outputs.dirs }}
+        run: |
+          node --experimental-strip-types .github/scripts/run-tests.ts $DIRS \
+            > /tmp/test-results.json
+
+      # Informational, as in the agent workflow: a surviving mutant is a signal for the reviewer.
+      # No --base: this PR changes the suite, not the code, so every mutant in the module judges
+      # it (the changed-lines scope would find no changed code and hide the score).
+      - name: Mutation check (informational)
+        if: steps.detect.outputs.dirs != '' && steps.run-tests.outcome == 'success'
+        continue-on-error: true
+        env:
+          DIRS: ${{ steps.detect.outputs.dirs }}
+        run: |
+          node --experimental-strip-types .github/scripts/mutation-check.ts \
+            --json /tmp/mutation-results.json $DIRS || true
+
+      - name: Write job summary
+        if: always()
+        run: |
+          node -e "
+            const fs = require('fs');
+            const read = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+            fs.writeFileSync('/tmp/tests-report.json', JSON.stringify({
+              decisions: [], findings: [],
+              results: read('/tmp/test-results.json') ?? [],
+              mutations: read('/tmp/mutation-results.json') ?? undefined,
+            }));
+          "
+          node --experimental-strip-types .github/scripts/format-comment.ts \
+            /tmp/tests-report.json tests-only >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if tests failed
+        if: steps.run-tests.outcome == 'failure'
+        env:
+          DIRS: ${{ steps.detect.outputs.dirs }}
+        run: |
+          echo "::error::Terraform tests failed for: $DIRS"
+          exit 1

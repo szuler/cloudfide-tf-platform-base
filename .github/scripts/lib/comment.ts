@@ -178,6 +178,30 @@ export function renderReportBody(report: Report): string {
   return parts.join("\n");
 }
 
+/**
+ * Job summary for a PR that changes only tests: the agent does not run, so there are no
+ * decisions or findings — just the authoritative results and the mutation check.
+ */
+export function renderTestsOnlySummary(report: Report): string {
+  const parts = [
+    "## 🧪 Terraform tests (test-only change)",
+    "",
+    "_This PR changes only test files, so the agent does not run: the tests and the mutation check are run directly._",
+    "",
+    "### Test results",
+    "",
+    "| Target | Status | Detail |",
+    "| --- | --- | --- |",
+  ];
+  for (const r of report.results) parts.push(renderTestRow(r));
+  if (report.results.length === 0) parts.push("| — | — | no module with changed tests |");
+  parts.push("");
+  if (report.mutations?.length) {
+    parts.push("### Mutation check (informational)", "", renderMutations(report.mutations), "");
+  }
+  return parts.join("\n");
+}
+
 /** Job summary is the same content without the HTML comment marker. */
 export function renderJobSummary(report: Report): string {
   return renderComment(report).replace(`${COMMENT_MARKER}\n`, "");

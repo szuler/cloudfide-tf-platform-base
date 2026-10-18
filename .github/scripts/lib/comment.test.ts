@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { COMMENT_MARKER, renderComment, renderJobSummary } from "./comment.ts";
+import { COMMENT_MARKER, renderComment, renderJobSummary, renderTestsOnlySummary } from "./comment.ts";
 import type { Report } from "./types.ts";
 
 const baseReport: Report = {
@@ -193,4 +193,16 @@ test("a corrected decision shows git's fact and the agent's claim", () => {
     decisions: [{ target: "modules/x", action: "skipped", reportedAction: "created", reason: "r", targetIsNew: false }],
   });
   assert.ok(md.includes("- **modules/x** _(existing)_ — no test changes in this run _(the agent reported “tests created”)_: r"));
+});
+
+test("test-only summary shows results and mutations, and no decisions or findings", () => {
+  const md = renderTestsOnlySummary({ ...baseReport, mutations: [{ dir: "modules/data-factory", results: [], note: "no applicable mutation — not checked" }] });
+  assert.ok(md.includes("test-only change"));
+  assert.ok(md.includes("| `modules/data-factory` | ✅ | 4 passed, 0 failed, 0 errored |"));
+  assert.ok(md.includes("### Mutation check (informational)"));
+  assert.ok(!md.includes("### Decisions") && !md.includes("### Findings"));
+});
+
+test("test-only summary with no module still says so (edge)", () => {
+  assert.ok(renderTestsOnlySummary({ decisions: [], results: [], findings: [] }).includes("no module with changed tests"));
 });
