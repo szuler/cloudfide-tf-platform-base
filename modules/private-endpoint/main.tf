@@ -4,6 +4,8 @@ resource "azurerm_private_endpoint" "this" {
   location            = var.location
   subnet_id           = var.subnet_id
 
+  custom_network_interface_name = var.network_interface_name
+
   private_service_connection {
     name                           = "psc-${var.name}"
     private_connection_resource_id = var.target_resource_id

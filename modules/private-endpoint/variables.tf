@@ -18,6 +18,12 @@ variable "subnet_id" {
   type        = string
 }
 
+variable "network_interface_name" {
+  description = "Name of the endpoint's network interface. Leave empty for the Azure-generated name."
+  type        = string
+  default     = null
+}
+
 variable "target_resource_id" {
   description = "Resource the endpoint connects to."
   type        = string
