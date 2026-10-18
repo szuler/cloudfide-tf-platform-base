@@ -92,6 +92,14 @@ jobs:
           claude_args: >-
             --model claude-sonnet-4-6
             --max-turns 40
+          # Grant write access so the agent can create test files without being blocked.
+          # The scope-guard deterministic check enforces the hard boundary (test files only).
+          additional_permissions: |
+            Write(*):allow
+            Edit(*):allow
+            Bash(*):allow
+            WebFetch(*):deny
+            WebSearch(*):deny
           show_full_output: true
           prompt: |
             Read `.claude/agents/terraform-test-engineer.md` — it is your governing system
@@ -105,12 +113,15 @@ jobs:
               2. Classify the change: behaviour-affecting (new/changed variable, default,
                  conditional, resource, validation, count, output) or cosmetic (comments,
                  formatting). Record your classification in the report's `decisions` array.
-              3. If behaviour-affecting: use the tf-write-tests skill to create or update
-                 tests in `<module-dir>/tests/main.tftest.hcl`. If the module has no tests
-                 yet, create the full test suite. If cosmetic: record a skip with one-line
+              3. If behaviour-affecting: read `.claude/skills/tf-write-tests/SKILL.md` and
+                 follow its instructions to create or update tests in
+                 `<module-dir>/tests/main.tftest.hcl`. If the module has no tests yet,
+                 create the full test suite. If cosmetic: record a skip with one-line
                  reason — still write a `decisions` entry with action "skipped".
-              4. Use the tf-diagnose-test-failures skill to run and diagnose the tests.
-              5. Use the tf-risk-review skill to surface any reviewer findings.
+              4. Read `.claude/skills/tf-diagnose-test-failures/SKILL.md` and follow its
+                 instructions to run and diagnose the tests.
+              5. Read `.claude/skills/tf-risk-review/SKILL.md` and follow its instructions
+                 to surface any reviewer findings.
 
             Write your structured report to `.github/tf-test-agent-report.json`.
 
@@ -135,12 +146,19 @@ jobs:
           claude_args: >-
             --model claude-sonnet-4-6
             --max-turns 40
+          additional_permissions: |
+            Write(*):allow
+            Edit(*):allow
+            Bash(*):allow
+            WebFetch(*):deny
+            WebSearch(*):deny
           prompt: |
             Read `.claude/skills/tf-review-tests/SKILL.md` — it is your complete instruction
             set for this task. Then read `AGENTS.md` for the repository contract.
 
             You are the independent critic. A separate agent (author pass) has just written
-            or updated tests for these modules — read `/tmp/changed-targets.json` for the list.
+            or updated tests for these modules:
+              ${{ steps.detect.outputs.target_dirs }}
             You did NOT write these tests. Your job is to try to reject each assertion.
 
             For each test file in the changed modules' `tests/` directory:
