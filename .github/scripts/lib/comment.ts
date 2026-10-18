@@ -47,7 +47,9 @@ function renderTestReview(votes: TestReviewVote[]): string {
   return votes
     .map((v) => {
       const icon = icons[v.verdict] ?? "?";
-      const applied = v.applied ? " _(applied)_" : "";
+      // A critic in review-only mode suggests instead of editing; say so, so nobody
+      // reads a "strengthen" as a change that was made.
+      const applied = v.applied ? " _(applied)_" : v.verdict === "keep" ? "" : " _(suggested, not applied)_";
       return `- ${icon} **${v.verdict}** \`${v.run}\` in \`${v.file}\` — ${v.reason}${applied}`;
     })
     .join("\n");

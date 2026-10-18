@@ -3,7 +3,9 @@
 // here; everything else is pure logic in lib/ledger.ts.
 // Usage: node scripts/pr-comments.ts --report <report.json> --comments <comments.json> \
 //          --base <sha> --head <sha> --run-id <id> --run-url <url> [--agent-commit <sha>] \
-//          --out-dir <dir>
+//          [--author-tree <tree>] --out-dir <dir>
+// --author-tree (the snapshot after the author pass) splits the agent commit's test changes
+// into the author's and the critic's.
 // Writes <out-dir>/ledger.md, <out-dir>/run-comment.md and <out-dir>/comment-plan.json.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,6 +19,7 @@ import {
   testChanges,
   updateLedger,
 } from "./lib/ledger.ts";
+import { testPathChanges } from "./lib/scope.ts";
 import type { AgentCommit, PrComment, Report } from "./lib/types.ts";
 
 /** The identity the workflow commits agent tests under (see the commit step). */
@@ -33,6 +36,13 @@ function commitChanges(sha: string) {
     git(["show", "--format=", "--name-status", sha]),
     git(["show", "--format=", "-U0", sha, "--", "*.tftest.hcl"]),
   );
+}
+
+/** Before the author → after the author is the author's; after the author → committed is the critic's. */
+function changedBy(agentCommit: string, authorTree: string) {
+  const paths = (from: string, to: string) =>
+    testPathChanges(git(["diff", "--name-status", "--no-renames", from, to])).map((c) => c.path);
+  return { author: paths(`${agentCommit}^`, authorTree), critic: paths(authorTree, agentCommit) };
 }
 
 /** Agent commits on the PR branch, oldest first. */
@@ -71,12 +81,14 @@ function main(): void {
   const commits = agentCommits(a.base!);
   const agentCommit = a["agent-commit"] || undefined;
 
+  const authorTree = a["author-tree"] || undefined;
   const current = rowFromReport(report, {
     runId: a["run-id"]!,
     runUrl: a["run-url"]!,
     headSha: a.head!,
     agentCommit,
     changes: agentCommit ? commitChanges(agentCommit) : [],
+    changedBy: agentCommit && authorTree ? changedBy(agentCommit, authorTree) : undefined,
   });
   const previous = existing.ledger ? decodeState(existing.ledger.body) : null;
   if (existing.ledger && !previous) {

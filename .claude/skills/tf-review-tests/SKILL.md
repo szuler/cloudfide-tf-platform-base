@@ -54,7 +54,15 @@ test.
 ## Verdict and what you may change
 
 Produce a verdict for each `run` (or assertion): **keep**, **strengthen**, or **drop**, each with
-a one-line reason. You may apply a `strengthen` or `drop` edit directly to the test file, but:
+a one-line reason. Whether you may edit is decided by the workflow and stated in your prompt:
+
+- **edit** mode (the author changed tests in this run): you may apply a `strengthen` or `drop`
+  edit directly to the test file, under the rules below.
+- **review-only** mode (the author changed no tests): change no test file. Give the verdicts,
+  set `applied: false`, and describe the change you would make in `reason`. A new push that
+  needs no new tests must not grow the suite; the person decides.
+
+When you do edit:
 
 - **Strengthen means: make the test catch a plausible bug in the behaviour it names.** Adding an
   assertion that restates a hard-coded literal from `main.tf` (e.g. `use_managed_identity ==

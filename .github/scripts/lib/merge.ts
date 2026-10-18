@@ -30,11 +30,13 @@ export interface MergeInput {
   denials: Record<string, number>;
   /** Mutation check of the final suites; informational, never a problem. */
   mutations?: MutationReport[];
+  /** Warnings raised by workflow steps (e.g. critic edits that were undone). */
+  notes?: string[];
 }
 
-export function mergeReport({ agent, results, targets, denials, mutations }: MergeInput): Report {
+export function mergeReport({ agent, results, targets, denials, mutations, notes }: MergeInput): Report {
   const problems: string[] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = [...(notes ?? [])];
 
   if (agent === null) {
     problems.push("The agent did not produce a report — its decisions and findings are unknown.");

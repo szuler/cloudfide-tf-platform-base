@@ -160,6 +160,8 @@ export interface LedgerRow {
   tests?: { passed: number; total: number };
   mutation?: { caught: number; scored: number };
   changes: TestFileChange[];
+  /** Which pass changed each test file in this run (paths), from snapshots between passes. */
+  changedBy?: { author: string[]; critic: string[] };
   decisions?: Array<Pick<AgentDecision, "target" | "action" | "reason">>;
   review?: Record<CriticVerdict, number>;
   findings?: number;
