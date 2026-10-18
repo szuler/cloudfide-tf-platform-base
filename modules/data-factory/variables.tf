@@ -4,7 +4,7 @@ variable "name" {
 }
 
 variable "resource_group_name" {
-  description = "Resource group that holds the factory."
+  description = "Resource group that holds the data factory."
   type        = string
 }
 
