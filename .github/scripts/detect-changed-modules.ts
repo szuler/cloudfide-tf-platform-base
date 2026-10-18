@@ -2,7 +2,14 @@
 // Usage: node scripts/detect-changed-modules.ts [baseRef] [headRef]
 //   or:  BASE_REF=origin/main HEAD_REF=HEAD node scripts/detect-changed-modules.ts
 import { run } from "./lib/exec.ts";
-import { detectChangedTargets } from "./lib/changed.ts";
+import { detectChangedTargets, markNewTargets } from "./lib/changed.ts";
+
+/** Did `dir` exist at the merge base of the two refs? (falls back to baseRef itself) */
+function existsAtBase(baseRef: string, headRef: string): (dir: string) => boolean {
+  const mb = run("git", ["merge-base", baseRef, headRef], process.cwd());
+  const base = mb.code === 0 ? mb.stdout.trim() : baseRef;
+  return (dir) => run("git", ["cat-file", "-e", `${base}:${dir}`], process.cwd()).code === 0;
+}
 
 function getChangedFiles(baseRef: string, headRef: string): string[] {
   // Prefer the three-dot range (merge-base diff); fall back to a plain diff.
@@ -20,7 +27,10 @@ function getChangedFiles(baseRef: string, headRef: string): string[] {
 function main(): void {
   const baseRef = process.env.BASE_REF ?? process.argv[2] ?? "origin/main";
   const headRef = process.env.HEAD_REF ?? process.argv[3] ?? "HEAD";
-  const result = detectChangedTargets(getChangedFiles(baseRef, headRef));
+  const result = markNewTargets(
+    detectChangedTargets(getChangedFiles(baseRef, headRef)),
+    existsAtBase(baseRef, headRef),
+  );
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 

@@ -50,6 +50,8 @@ Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (h
 - Only report what the **diff** touches or what the changed behaviour makes relevant. Do not
   audit the whole repo unless asked (that's the backfill task).
 - Prefer a few high-signal findings over a long noisy list.
+- A finding is something a reviewer should act on or weigh. Do not report things that are
+  already fine ("secure default — no action needed"); if it needs no decision, leave it out.
 - If the change is clean, report no findings — that is a valid, useful result.
 - A finding is **not** a reason to edit the code or to weaken a test. It goes in the report for
   a human to decide.

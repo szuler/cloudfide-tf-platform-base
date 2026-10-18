@@ -34,7 +34,7 @@ function main(): void {
   const report = mergeReport({
     agent: readJson(agentPath) as AgentReport | null,
     results: Array.isArray(tests) ? (tests as ModuleTestResult[]) : [],
-    targets: detect?.targets.map((t) => t.dir) ?? [],
+    targets: detect?.targets ?? [],
     denials,
   });
 
