@@ -23,6 +23,12 @@ variable "storage_account_id" {
   type        = string
 }
 
+variable "sku_name" {
+  description = "SKU of the App Service plan that hosts the function app."
+  type        = string
+  default     = "EP1"
+}
+
 variable "python_version" {
   description = "Python version of the runtime."
   type        = string
