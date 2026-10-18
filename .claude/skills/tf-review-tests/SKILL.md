@@ -31,6 +31,11 @@ Ask these in order; the first "yes" is a reason to strengthen or drop:
      == "TLS1_2"`, `default_action == "Deny"`) is worth keeping — it catches a future security
      regression. It must read as a guard, not as behaviour coverage, and it must be
      security-relevant. Billing tiers, SKUs, names, and cosmetic constants do **not** qualify.
+   - **A guard must protect the safe direction.** An assertion that pins a risky value — an
+     over-broad role, a public-access default of `true`, `ftps_state = "AllAllowed"`, anything
+     the risk review reports as a finding — is not a guard, whatever its `error_message` says.
+     It cements the risk. Verdict: `drop`, or `strengthen` by renaming it to "current behaviour —
+     see the finding". Never *add* such an assertion yourself.
 2. **Would it still pass if the code were subtly wrong?** If a plausible wrong implementation
    (a swapped default, a dropped `var.` wiring, an off-by-one count) would leave this assertion
    green, the test is weak. A good assertion fails when the behaviour it names breaks.

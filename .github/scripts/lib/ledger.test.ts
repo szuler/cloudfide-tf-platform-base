@@ -291,3 +291,31 @@ test("no plain #N outside links: GitHub would autolink it to issue/PR N (negativ
   assert.doesNotMatch(outsideLinks(renderLedger({ rows }, new Set(["c1c1c1c1"]), urls)), /(^|[^\w&])#\d/m);
   assert.doesNotMatch(outsideLinks(renderRunComment(report, rows[1]!, 2)), /(^|[^\w&])#\d/m);
 });
+
+test("a rerun keeps an earlier attempt that changed tests, labelled", () => {
+  const first = rowFromReport(report, { ...ctx, runUrl: "https://r/runs/100/attempts/1", agentCommit: "c1c1c1c1", changes: commit1.changes });
+  const second = rowFromReport(report, { ...ctx, runUrl: "https://r/runs/100/attempts/2" });
+  const ledger = updateLedger(updateLedger(null, first, [commit1]), second, [commit1]);
+  assert.equal(ledger.rows.length, 2);
+  assert.equal(ledger.rows[0]?.earlierAttempt, true);
+  const md = renderLedger(ledger, new Set(["c1c1c1c1"]));
+  assert.ok(md.includes("| [1](https://r/runs/100/attempts/1) _(earlier attempt)_ |"));
+  assert.ok(md.includes("| [2](https://r/runs/100/attempts/2) |"));
+});
+
+test("agent commits with no test change (lock file only) are not runs (PR 11 case)", () => {
+  const lockOnly: AgentCommit = { sha: "1occ0000", parent: "bccbde90", changes: [] };
+  // What PR 11's ledger stored after the failed attempt and its rerun:
+  const stored = { rows: [{ source: "history" as const, headSha: "bccbde90", agentCommit: "1occ0000", changes: [] }, rowFromReport(report, ctx)] };
+  const next = rowFromReport(report, { ...ctx, runId: "200" });
+  const ledger = updateLedger(stored, next, [lockOnly]);
+  assert.deepEqual(ledger.rows.map((r) => r.runId), ["100", "200"]);
+  assert.equal(updateLedger(null, next, [lockOnly]).rows.length, 1);
+});
+
+test("attempt-specific run URLs keep two attempts' comments apart (edge)", () => {
+  const c = (id: number, url: string) => ({ id, node_id: `n${id}`, html_url: `https://gh/c${id}`, body: `${RUN_MARKER}\n[workflow run](${url}) · [PR summary](u)` });
+  const urls = runCommentUrls([c(1, "https://r/runs/100/attempts/1"), c(2, "https://r/runs/100/attempts/2")]);
+  assert.equal(urls.get("https://r/runs/100/attempts/1"), "https://gh/c1");
+  assert.equal(urls.get("https://r/runs/100/attempts/2"), "https://gh/c2");
+});

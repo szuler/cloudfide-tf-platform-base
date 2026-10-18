@@ -296,8 +296,11 @@ jobs:
       # Commits via GITHUB_TOKEN do not trigger new workflow runs (loop prevention).
       - name: Commit and push test files
         id: commit
+        # Only after a successful author pass: a failed run's partial work was never reviewed
+        # by the critic and must not land in the PR.
         if: >-
           steps.detect.outputs.target_count != '0' &&
+          steps.agent.outcome == 'success' &&
           steps.config-restore.outcome == 'success' &&
           steps.scope-guard.outcome == 'success'
         # Identity is set per command: claude-code-action configures its own git user
@@ -306,15 +309,19 @@ jobs:
         # The message body (run link + decisions) makes the commit a durable record, and its
         # `[skip ci]` keeps the agent's own commit from creating another run of this workflow
         # (GitHub skips pull_request runs whose HEAD commit carries it).
+        # A commit needs a test file change: `terraform init` writes a lock file on every run,
+        # which may go along with tests but never makes a commit on its own.
         run: |
-          git add -- modules/ stacks/
-          if git diff --cached --quiet; then
+          TREE=$(node --experimental-strip-types .github/scripts/test-snapshot.ts tree)
+          TESTS=$(node --experimental-strip-types .github/scripts/test-snapshot.ts list HEAD "$TREE")
+          if [ -z "$TESTS" ]; then
             echo "No test files changed; nothing to commit."
           else
+            git add -- modules/ stacks/
             node --experimental-strip-types .github/scripts/commit-message.ts \
               .github/tf-test-agent-report.json \
               "${{ github.event.pull_request.number }}" \
-              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}" \
               > /tmp/commit-message.txt
             git -c user.name="Terraform Test Agent" \
                 -c user.email="tf-test-agent@users.noreply.github.com" \
@@ -427,7 +434,7 @@ jobs:
             --base "${{ github.event.pull_request.base.sha }}" \
             --head "${{ github.event.pull_request.head.sha }}" \
             --run-id "${{ github.run_id }}" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}" \
             --agent-commit "${{ steps.commit.outputs.sha }}" \
             --author-tree "${{ steps.author-snapshot.outputs.tree }}" \
             --out-dir /tmp/pr-comments
@@ -438,6 +445,10 @@ jobs:
       - name: Publish PR comments
         if: always() && steps.render-comments.outcome == 'success'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          # Attempt-specific, like the URL the ledger rows and run comments carry, so the
+          # comments of two attempts of the same run stay apart.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -449,7 +460,7 @@ jobs:
             // The ledger and this run's comment link to each other, and on the first run neither
             // exists yet. So: post the ledger with this run's row linking to the workflow log,
             // post the run comment (which needs the ledger's URL), then point the row at it.
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const runUrl = process.env.RUN_URL;
             const ledgerWith = url => read('ledger.md').split('{{RUN_COMMENT_URL}}').join(url);
             const ledger = plan.ledgerCommentId
               ? (await github.rest.issues.updateComment({ ...repo, comment_id: plan.ledgerCommentId, body: ledgerWith(runUrl) })).data
