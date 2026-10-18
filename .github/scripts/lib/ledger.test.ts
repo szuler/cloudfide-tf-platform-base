@@ -11,6 +11,8 @@ import {
   LEGACY_MARKER,
   MAX_COMMENT_CHARS,
   renderLedger,
+  RUN_COMMENT_URL_PLACEHOLDER,
+  runCommentUrls,
   renderRunComment,
   rowFromReport,
   RUN_MARKER,
@@ -256,4 +258,24 @@ test("commit message carries run link, one-line decisions and [skip ci]", () => 
   assert.ok(msg.includes("- modules/x: created — line one line two"));
   assert.ok(msg.includes("[skip ci]"));
   assert.ok(commitMessage(null, "5", "https://r").includes("[skip ci]"));
+});
+
+test("run numbers link to their report comments, with the workflow log as a second link", () => {
+  const first = rowFromReport(report, { ...ctx, runUrl: "https://example/runs/100" });
+  const second = rowFromReport(report, { ...ctx, runId: "200", runUrl: "https://example/runs/200" });
+  const urls = runCommentUrls([
+    { id: 1, node_id: "n1", html_url: "https://gh/pr/5#issuecomment-1", body: `${RUN_MARKER}\nCommit x · [workflow run](https://example/runs/100) · [PR summary](u)` },
+  ]);
+  urls.set("https://example/runs/200", RUN_COMMENT_URL_PLACEHOLDER);
+  const md = renderLedger({ rows: [first, second] }, new Set(), urls);
+  assert.ok(md.includes("| [#1](https://gh/pr/5#issuecomment-1) · [log](https://example/runs/100) |"));
+  assert.ok(md.includes(`| [#2](${RUN_COMMENT_URL_PLACEHOLDER}) · [log](https://example/runs/200) |`));
+  assert.ok(md.includes("- [Full report of run #1](https://gh/pr/5#issuecomment-1)"));
+});
+
+test("a row whose report comment is gone falls back to the workflow log (edge)", () => {
+  const row = rowFromReport(report, { ...ctx, runUrl: "https://example/runs/100" });
+  const md = renderLedger({ rows: [row] }, new Set(), runCommentUrls([]));
+  assert.ok(md.includes("| [#1](https://example/runs/100) |"));
+  assert.ok(!md.includes("Full report of run"));
 });
