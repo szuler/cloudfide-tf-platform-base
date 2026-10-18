@@ -414,8 +414,15 @@ level.
   (`panic: value has marks`). The run is still reported as failed (and the mutation check
   counts it as caught). The test-results row then says "no result parsed", and the
   `tf-diagnose-test-failures` skill explains it to the agent.
-- **No required status check.** Branch protection isn't available on a private Free repository,
-  so the check is informational until the repository is public.
+- **`main` is protected, but no status check is required.** A ruleset makes `main` PR-only (with
+  0 approvals, so a single maintainer isn't locked out) and blocks force-pushes and deletion.
+  Requiring a workflow's check isn't possible as the workflows stand. GitHub keeps a check
+  skipped by path filters or a commit message "Pending", and that blocks the merge. Two of our
+  design choices would do exactly that:
+  - the path filters, so a documentation-only PR would wait forever;
+  - the agent's own `[skip ci]` commit, so every PR the agent commits to would wait forever.
+
+  The fix is described under [Production](#what-would-change-for-a-production-version).
 - **Coverage on main:** 6 of 8 modules have tests. `data-factory` and `function-app` have theirs
   in the open demo PRs #5 and #11, kept open on purpose to show multi-run history. The stack has
   none.
@@ -461,8 +468,18 @@ level.
 
 ## What would change for a production version
 
-1. **Make it a required check** with branch protection, and decide which outcomes block a merge.
-   Scope guard and test failures should; findings shouldn't.
+1. **Make it a required check**, and decide which outcomes block a merge: scope guard and test
+   failures should, findings shouldn't. The workflows' own checks can't be required: GitHub says
+   to "avoid requiring workflows that can be skipped", and ours are skipped by path filters and by
+   the agent's `[skip ci]` commit. Instead, make one **gate status** the only required check, and
+   post it from the workflows through the API (`statuses: write`):
+   - the agent workflow posts it on its own commit's SHA after pushing, with the job's verdict;
+   - the test-only workflow posts it on the PR head;
+   - a small workflow without path filters posts success when a PR touches neither Terraform
+     nor tests.
+
+   Each case — a documentation-only PR, a PR the agent commits to, a test-only PR — has to be
+   checked on a real PR before the rule is switched on.
 2. **Workload identity federation** instead of a long-lived API key, plus per-repo budgets and
    alerts.
 3. **A differential mutation check** (the more thorough design deferred above): run each mutant
