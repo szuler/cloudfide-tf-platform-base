@@ -25,7 +25,7 @@ variable "log_analytics_workspace_id" {
 }
 
 variable "diagnostic_log_categories" {
-  description = "Diagnostic log categories sent to the Log Analytics workspace."
+  description = "Diagnostic log categories the factory sends to the Log Analytics workspace."
   type        = set(string)
   default     = ["ActivityRuns", "PipelineRuns"]
 
