@@ -212,6 +212,27 @@ test("an adopted legacy comment is capped (edge)", () => {
   assert.ok((ledger.rows[0]?.legacyBody?.length ?? 0) < 21_000);
 });
 
+test("each test change says which pass made it", () => {
+  const row = rowFromReport(report, {
+    ...ctx,
+    agentCommit: "c1c1c1c1",
+    changes: [
+      { path: TEST_FILE, status: "updated", runsAdded: 1, runsRemoved: 0 },
+      { path: "modules/data-factory/tests/extra.tftest.hcl", status: "created", runsAdded: 2, runsRemoved: 0 },
+    ],
+    changedBy: { author: ["modules/data-factory/tests/extra.tftest.hcl", TEST_FILE], critic: [TEST_FILE] },
+  });
+  const md = renderLedger({ rows: [row] }, new Set(["c1c1c1c1"]));
+  assert.ok(md.includes(`\`${TEST_FILE}\` updated (+1 run) · by author + critic`));
+  assert.ok(md.includes("`modules/data-factory/tests/extra.tftest.hcl` created (+2 runs) · by author"));
+  assert.ok(renderRunComment(report, row, 1).includes("· by author + critic"));
+});
+
+test("no attribution label when it was not recorded (older rows)", () => {
+  const row = rowFromReport(report, { ...ctx, agentCommit: "c1c1c1c1", changes: commit1.changes });
+  assert.ok(!renderLedger({ rows: [row] }, new Set()).includes("· by "));
+});
+
 // ── run comment and commit message ──
 
 test("run comment without test changes points the reviewer to the ledger", () => {

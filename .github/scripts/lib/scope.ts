@@ -29,6 +29,28 @@ export function scopeViolations(files: string[]): string[] {
     .sort();
 }
 
+export interface PathChange {
+  /** git's status letter: A(dded), M(odified), D(eleted), R(enamed)… */
+  status: string;
+  path: string;
+}
+
+/**
+ * Test-file entries of `git diff --name-status` (the lock file is an init artifact, not a
+ * test). A rename counts as its new path.
+ */
+export function testPathChanges(nameStatus: string): PathChange[] {
+  const out: PathChange[] = [];
+  for (const line of nameStatus.split(/\r?\n/)) {
+    const [code, ...paths] = line.trim().split("\t");
+    const path = paths[paths.length - 1];
+    if (!code || !path) continue;
+    if (isIgnorableArtifact(path) || !isAllowedTestPath(path)) continue;
+    out.push({ status: code[0]!, path: normalizePath(path) });
+  }
+  return out;
+}
+
 /**
  * Parse `git status --porcelain` output into a list of changed paths. Covers tracked
  * modifications AND untracked files (git already excludes .gitignore'd paths), and resolves

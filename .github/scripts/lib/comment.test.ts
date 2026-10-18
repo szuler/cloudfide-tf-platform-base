@@ -172,3 +172,17 @@ test("job summary drops the HTML marker", () => {
   assert.ok(!md.includes(COMMENT_MARKER));
   assert.ok(md.includes("Terraform Test Agent"));
 });
+
+test("a verdict that was not applied reads as a suggestion; keep stays plain", () => {
+  const md = renderComment({
+    ...baseReport,
+    testReview: [
+      { file: "f", run: "a", verdict: "strengthen", reason: "add a url assertion", applied: false },
+      { file: "f", run: "b", verdict: "strengthen", reason: "r", applied: true },
+      { file: "f", run: "c", verdict: "keep", reason: "fine" },
+    ],
+  });
+  assert.ok(md.includes("`a` in `f` — add a url assertion _(suggested, not applied)_"));
+  assert.ok(md.includes("`b` in `f` — r _(applied)_"));
+  assert.ok(md.includes("`c` in `f` — fine\n") || md.endsWith("`c` in `f` — fine"));
+});

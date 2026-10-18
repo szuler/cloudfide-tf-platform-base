@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isAllowedTestPath, parsePorcelain, scopeViolations } from "./scope.ts";
+import { isAllowedTestPath, parsePorcelain, scopeViolations, testPathChanges } from "./scope.ts";
 
 test("allows tftest files and tests-dir helpers", () => {
   assert.equal(isAllowedTestPath("modules/network/tests/main.tftest.hcl"), true);
@@ -54,4 +54,18 @@ test("parsePorcelain handles untracked, modified and renamed entries", () => {
   ]);
   // the only real violation here is the modified infra file
   assert.deepEqual(scopeViolations(files), ["a/new.ts", "modules/x/main.tf"]);
+});
+
+test("testPathChanges keeps test files only, skips the lock file, uses a rename's new path", () => {
+  const nameStatus = [
+    "A\tmodules/df/tests/main.tftest.hcl",
+    "M\tmodules/df/main.tf",
+    "A\tmodules/df/.terraform.lock.hcl",
+    "R087\tmodules/df/tests/old.tftest.hcl\tmodules/df/tests/new.tftest.hcl",
+    "",
+  ].join("\n");
+  assert.deepEqual(testPathChanges(nameStatus), [
+    { status: "A", path: "modules/df/tests/main.tftest.hcl" },
+    { status: "R", path: "modules/df/tests/new.tftest.hcl" },
+  ]);
 });

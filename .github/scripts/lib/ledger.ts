@@ -11,6 +11,7 @@
 // agent commit does not erase its row.
 import { renderReportBody } from "./comment.ts";
 import { headlineResults, score } from "./mutate.ts";
+import { testPathChanges } from "./scope.ts";
 import type {
   AgentCommit,
   AgentReport,
@@ -39,10 +40,6 @@ const STATE_OPEN = "<!-- tf-test-agent:state ";
 const STATE_CLOSE = " -->";
 
 // ── git facts ──────────────────────────────────────────────────────────────
-
-export function isTestPath(path: string): boolean {
-  return path.endsWith(".tftest.hcl") || /(^|\/)(modules|stacks)\/[^/]+\/tests\//.test(path);
-}
 
 /** Count `run "..."` blocks added/removed per file in a unified diff (`git show -U0`). */
 export function countRunBlocks(diff: string): Map<string, { added: number; removed: number }> {
@@ -78,16 +75,11 @@ export function countRunBlocks(diff: string): Map<string, { added: number; remov
 /** Test files a commit touched, from `git show --name-status` and `git show -U0`. */
 export function testChanges(nameStatus: string, diff: string): TestFileChange[] {
   const runs = countRunBlocks(diff);
-  const changes: TestFileChange[] = [];
-  for (const line of nameStatus.split(/\r?\n/)) {
-    const [code, ...paths] = line.trim().split("\t");
-    const path = paths[paths.length - 1];
-    if (!code || !path || !isTestPath(path)) continue;
-    const status = code.startsWith("A") ? "created" : code.startsWith("D") ? "deleted" : "updated";
+  return testPathChanges(nameStatus).map(({ status: code, path }) => {
+    const status = code === "A" ? "created" : code === "D" ? "deleted" : "updated";
     const r = runs.get(path) ?? { added: 0, removed: 0 };
-    changes.push({ path, status, runsAdded: r.added, runsRemoved: r.removed });
-  }
-  return changes;
+    return { path, status, runsAdded: r.added, runsRemoved: r.removed };
+  });
 }
 
 /** Agent reasons are free text: keep each one to a single, bounded line in the commit. */
@@ -153,6 +145,7 @@ export interface RunContext {
   headSha: string;
   agentCommit?: string;
   changes: TestFileChange[];
+  changedBy?: LedgerRow["changedBy"];
 }
 
 export function rowFromReport(report: Report, ctx: RunContext): LedgerRow {
@@ -164,6 +157,7 @@ export function rowFromReport(report: Report, ctx: RunContext): LedgerRow {
     changes: ctx.changes,
   };
   if (ctx.agentCommit) row.agentCommit = ctx.agentCommit;
+  if (ctx.changedBy) row.changedBy = ctx.changedBy;
   if (report.notRun) {
     row.status = "not-run";
     return row;
@@ -247,8 +241,19 @@ export function describeChange(c: TestFileChange): string {
   return `\`${c.path}\` ${c.status}${detail ? ` (${detail})` : ""}`;
 }
 
+/** " · by author", " · by critic", " · by author + critic", or "" when not recorded. */
+export function changedByLabel(row: LedgerRow, path: string): string {
+  if (!row.changedBy) return "";
+  const who = (["author", "critic"] as const).filter((pass) => row.changedBy![pass].includes(path));
+  return who.length ? ` · by ${who.join(" + ")}` : "";
+}
+
+function describeRowChanges(row: LedgerRow, separator: string): string {
+  return row.changes.map((c) => `${describeChange(c)}${changedByLabel(row, c.path)}`).join(separator);
+}
+
 function changesCell(row: LedgerRow): string {
-  if (row.changes.length) return row.changes.map(describeChange).join("<br>");
+  if (row.changes.length) return describeRowChanges(row, "<br>");
   if (row.status === "not-run") return "agent did not run";
   if (row.source === "history") return "—";
   return row.status === "failed" ? "no test changes committed" : "no test changes";
@@ -323,7 +328,7 @@ export function renderLedger(ledger: Ledger, onBranch: Set<string>): string {
 /** The per-run comment: a header tying it to its commit/run/ledger, then the full report. */
 export function renderRunComment(report: Report, row: LedgerRow, n: number): string {
   const testsLine = row.changes.length
-    ? `**Test changes in this run** (commit ${short(row.agentCommit)}): ${row.changes.map(describeChange).join("; ")}`
+    ? `**Test changes in this run** (commit ${short(row.agentCommit)}): ${describeRowChanges(row, "; ")}`
     : `**No test changes in this run.** Tests the agent added earlier in this PR are listed in the [summary](${LEDGER_URL_PLACEHOLDER}).`;
   const header = [
     RUN_MARKER,
