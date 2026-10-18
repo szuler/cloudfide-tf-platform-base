@@ -105,7 +105,10 @@ jobs:
             --max-turns 40
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(terraform:*),Bash(git diff:*),Bash(git log:*),Bash(git status:*)"
             --disallowedTools "WebFetch,WebSearch"
-          show_full_output: true
+          # The full transcript (every message and tool result) goes to the Actions log only
+          # when debugging: `gh variable set TF_AGENT_DEBUG --body true`. The action warns
+          # that it can expose sensitive output and that logs are public in a public repo.
+          show_full_output: ${{ vars.TF_AGENT_DEBUG == 'true' }}
           prompt: |
             Read `.claude/agents/terraform-test-engineer.md` — it is your governing system
             prompt. Read `AGENTS.md` for the repository contract.
@@ -481,13 +484,30 @@ jobs:
               }
             }
 
+      # One metrics record per run — cost, time, turns, tokens, and quality signals (tests,
+      # mutation score, critic verdicts, git corrections, findings) — from data the run already
+      # has, so runs can be compared and trended. Informational: it never fails the job.
+      - name: Run metrics
+        if: always() && steps.detect.outputs.target_count != '0'
+        continue-on-error: true
+        run: |
+          node --experimental-strip-types .github/scripts/run-metrics.ts \
+            .github/tf-test-agent-report.json \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --author /tmp/author-execution.json \
+            --critic "${{ steps.critic.outputs.execution_file }}" \
+            --json /tmp/metrics.json --summary /tmp/metrics.md
+          cat /tmp/metrics.md >> "$GITHUB_STEP_SUMMARY"
+
       # The full machine-readable record of this run, kept with the run (repo retention: 90 days).
       - name: Collect run report
         if: always()
         run: |
           mkdir -p /tmp/tf-test-agent-artifact
           for f in .github/tf-test-agent-report.json /tmp/test-results.json \
-                   /tmp/mutation-results.json /tmp/changed-targets.json; do
+                   /tmp/mutation-results.json /tmp/changed-targets.json /tmp/metrics.json; do
             if [ -f "$f" ]; then cp "$f" /tmp/tf-test-agent-artifact/; fi
           done
 

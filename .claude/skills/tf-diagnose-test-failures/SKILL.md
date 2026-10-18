@@ -11,9 +11,9 @@ description: >-
 Run the module's tests and read failures carefully before changing anything.
 
 ```sh
-cd modules/<name>
-terraform init -backend=false
-terraform test            # add -json for machine-readable output
+# From the repository root (CI allows only `terraform` and read-only `git`; no `cd`):
+terraform -chdir=modules/<name> init -backend=false
+terraform -chdir=modules/<name> test      # add -json for machine-readable output
 ```
 
 ## The one decision that matters: test fault vs code fault

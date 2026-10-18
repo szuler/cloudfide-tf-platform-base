@@ -49,6 +49,11 @@ never change the code — you inform.
     `likely`, marked "verify against the Azure built-in roles docs". It is easy to get wrong —
     Contributor *does* include delete; Owner adds managing POSIX ACLs. Only the assignment you
     see in the code (e.g. "assigns Storage Blob Data Owner") is a `fact`.
+  - **The general rule behind these three:** any statement about how Azure or the provider
+    behaves — defaults, valid values, naming rules and length limits, what a role or SKU
+    allows — is knowledge from memory. Mark it "from memory — verify against the docs", and
+    if the finding rests on it, set at most `likely`. Only what you can see in the repository
+    is a `fact`.
 - **Suggested direction** — a direction for a human, not a decision or a code change.
 
 Severity: `high` (security/data exposure), `medium` (weakened posture), `low` (hygiene),

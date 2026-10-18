@@ -67,9 +67,11 @@ just exercise it. When it spots something a reviewer should know, it says so.
 ## Reporting
 
 For every finding give: location (`file:line`), what is wrong, why it matters, confidence
-(fact vs hypothesis), and a suggested direction. Distinguish facts from guesses and don't
-report noise. The agent writes a structured report that the workflow renders into one PR
-comment and a job summary.
+(`fact`, `likely` or `hypothesis`), and a suggested direction. Distinguish facts from guesses
+and don't report noise. The agent writes a structured report, which the workflow renders into
+two kinds of PR comment and a job summary:
+- a permanent summary comment, with one row per run, never hidden;
+- a full report comment for each run, where older ones are hidden as outdated.
 
 ## For Claude Code
 
