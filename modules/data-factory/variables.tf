@@ -1,5 +1,5 @@
 variable "name" {
-  description = "Data factory name."
+  description = "Name of the data factory."
   type        = string
 }
 
