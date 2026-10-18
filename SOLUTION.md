@@ -91,7 +91,7 @@ flowchart LR
   - it reports blocked tool calls as warnings;
   - it overrides the agent's labels with git facts (new vs existing module, "agent reported
     'created', git shows no test changes").
-- *Cost:* about 2,200 lines of TypeScript plus 1,150 lines of tests (`.github/scripts`, 100 unit
+- *Cost:* about 2,200 lines of TypeScript plus 1,150 lines of tests (`.github/scripts`, 102 unit
   tests, zero runtime dependencies, Node 24 runs TypeScript natively). That's more code to
   maintain than a prompt-only solution.
 
@@ -187,7 +187,14 @@ at again. The audit fills that gap on demand:
 4. It publishes `proposal.patch` in the `tf-test-audit` artifact, with a summary in the job
    summary.
 5. A person applies the patch on a branch (`git apply proposal.patch`) and opens a PR if they
-   agree. The PR workflow then runs on it as usual.
+   agree.
+
+**PRs that change only tests** (`.github/workflows/tf-tests.yml`):
+- The agent workflow triggers on `*.tf`/`*.tfvars` changes. A test-only PR, such as an applied
+  audit patch, matches none of those paths, so without this workflow no test would run on it.
+- This workflow runs the changed modules' tests and the mutation check (scored on the whole
+  module, because the suite is what changed).
+- It is deterministic: no agent, no API key, a read-only token.
 
 **Debugging a run:** `gh variable set TF_AGENT_DEBUG --body true` adds the author's full
 transcript to the Actions log. `gh variable delete TF_AGENT_DEBUG` turns it off again. Keep it
@@ -195,7 +202,7 @@ off in a public repository except while debugging.
 
 **Locally**
 ```sh
-cd .github/scripts && npm ci && npm test        # 100 unit tests, plus `npm run typecheck`
+cd .github/scripts && npm ci && npm test        # 102 unit tests, plus `npm run typecheck`
 cd modules/<name> && terraform init -backend=false && terraform test
 # mutation-check a module's suite (TERRAFORM_BIN is honoured):
 node --experimental-strip-types .github/scripts/mutation-check.ts modules/<name>
@@ -266,6 +273,17 @@ shows all seven runs:
     checked" rather than claiming a score.
   - The critic kept one tautology (`is_manual_connection == false`).
   - The one finding states Azure's NIC naming rules from memory but labels them `fact`.
+- **[Audit of `storage-account`](https://github.com/szuler/cloudfide-tf-platform-base/actions/runs/39154171515)**
+  (one of the three original suites):
+  - **Mutation score from 4/7 to 6/7.** The proposals add guards in the safe direction
+    (`shared_access_key_enabled == false`, `https_traffic_only_enabled == true`, containers
+    `private`), check container names rather than only their count, and add tests for the
+    default replication, the data-lake branch and an empty container list.
+  - **Cost:** $0.48, 223 s, 19 turns. Nothing was committed.
+  - **The agent's report overclaims.** It reports coverage "After: 12/12" behaviours, and the
+    same sentence says "9/12 before", then "4/12". The mutation check still finds an untested
+    default (`is_data_lake = false`). The report is the agent's account; the before/after score
+    is the evidence.
 
 **Cost and time:** author + critic come to **$0.52–0.63 per run** on PRs #3, #5 and #13, and
 **$0.75–0.77** on PR #11 (a bigger module, a 12-run suite). Each pass takes about 2 minutes, the
